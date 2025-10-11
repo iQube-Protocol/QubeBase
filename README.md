@@ -1,73 +1,174 @@
-# Welcome to your Lovable project
+# QubeBase - Core Hub Database for AgentiQ Platform
 
-## Project info
+**Production-grade Supabase backend** powering the Aigent Z ecosystem with multi-tenant isolation, encrypted file storage (BlakQube), compliance controls, billing with revenue sharing, and DID/FIO identity management.
 
-**URL**: https://lovable.dev/projects/ac4b5dcc-e2eb-434c-9ca1-a969585a7aee
+## Architecture Overview
 
-## How can I edit this code?
+QubeBase provides a unified data layer for multiple apps:
+- **Nakamoto**: Bitcoin-focused tools and services
+- **Kn0w1**: Knowledge management and media feeds
+- **Moneypenny**: Administrative and operational tools
+- **AgentIQ**: Agentic AI orchestration
 
-There are several ways of editing your application.
+### Core Features
 
-**Use Lovable**
+- **Multi-tenant isolation** via RLS policies with role-based access (Uber Admin, Franchise Admin, Site Admin, Editor, Viewer, End User)
+- **BlakQube Phase-1**: Client-side envelope encryption, 25 MB soft / 250 MB hard caps per file
+- **Compliance**: KYC attestations, jurisdiction blocking, PII masking
+- **Billing & Rev-Share**: Attribution tracking (first-touch default), formula-based splits
+- **DID/FIO**: Decentralized identity with default `@qripto` handles
+- **A2A/MCP**: Tool and agent catalogs with quota-based invocations
+- **Registry Mirror**: Template/instance model with blockchain proofs
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/ac4b5dcc-e2eb-434c-9ca1-a969585a7aee) and start prompting.
+## Quick Start
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ and npm
+- Supabase CLI: `npm install -g supabase`
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Local Development
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+```bash
+# 1. Clone the repository
 git clone <YOUR_GIT_URL>
+cd qubebase
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# 2. Copy environment template
+cp .env.sample .env
 
-# Step 3: Install the necessary dependencies.
-npm i
+# 3. Start Supabase locally
+supabase start
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+# 4. Apply migrations
+supabase db reset
+
+# 5. (Optional) Load seed data
+psql postgresql://postgres:postgres@localhost:54322/postgres < seed/seed.sql
+
+# 6. Run Edge Functions locally
+supabase functions serve --env-file .env
 ```
 
-**Edit a file directly in GitHub**
+### Generate TypeScript Types
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+supabase gen types typescript --project-id <project-id> > src/lib/database.types.ts
+```
 
-**Use GitHub Codespaces**
+## Project Structure
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```
+/supabase
+  /migrations
+    000_init.sql           # Complete schema DDL, RLS policies, RPCs
+  /functions
+    /upload_intake         # File upload with cap enforcement
+    /issue_signed_url      # Authorized download URL generation
+    /generate_derivatives  # Thumbnail/preview creation
+    /registry_webhook      # DVN/ICP template/instance sync
+    /ipfs_icp_connector    # Phase-2 hybrid storage (stub)
+    /analytics_refresh     # Materialized view refresh
+/seed
+  seed.sql                 # Test tenants, users, sites
+/tests
+  acceptance.http          # RLS and cap verification tests
+```
 
-## What technologies are used for this project?
+## Schemas
 
-This project is built with:
+| Schema | Purpose |
+|--------|---------|
+| `iam` | Users, tenants, sites, memberships |
+| `crm` | Contacts, accounts, deals, activities |
+| `registry_mirror` | Templates, instances, entitlements, proofs |
+| `black` | Payloads, envelopes (encryption), chunks, derivatives |
+| `media` | Assets, feed items, mint intents |
+| `agentic` | Tools, agents, grants, invocations |
+| `compliance` | KYC attestations, country blocks, jurisdiction policies |
+| `billing` | Accounts, meters, invoices, line items, rev-share rules |
+| `did` | Identities, personas, keys |
+| `fio` | FIO handles (default: `@qripto`) |
+| `ops` | Audit logs, access logs, analytics MVs |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Environment Variables
 
-## How can I deploy this project?
+See `.env.sample` for required variables:
+- `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
+- File size caps: `APP_FILE_SOFT_CAP_BYTES` (25 MB), `APP_FILE_HARD_CAP_BYTES` (250 MB)
 
-Simply open [Lovable](https://lovable.dev/projects/ac4b5dcc-e2eb-434c-9ca1-a969585a7aee) and click on Share -> Publish.
+## Edge Functions
 
-## Can I connect a custom domain to my Lovable project?
+### `upload_intake`
+- Enforces 25 MB soft / 250 MB hard caps
+- MIME validation, virus scanning (TODO)
+- Creates `black.payloads`, `black.chunks`, `media.assets`
+- Reads client-side envelope metadata
 
-Yes, you can!
+### `issue_signed_url`
+- Sets `app.request_country` from request headers
+- Calls `black.authorize_payload_download` RPC
+- Issues short-lived signed URL from Supabase Storage
+- Logs to `ops.access_log`
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### `generate_derivatives`
+- Ephemeral server-side decrypt (if policy allows)
+- Generates thumbnails, preview clips
+- Writes `black.derivatives`
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+### `registry_webhook`
+- Verifies DVN/ICP signatures (TODO: actual verification)
+- Upserts `registry_mirror.templates/instances/proofs/entitlements`
+- Idempotency via `txid` or `instance_id`
+
+### `ipfs_icp_connector` (Phase 2 stub)
+- Manages `storage.replicas` table
+- Handles prefetch/hydration state machine
+- No external IPFS/ICP calls yet
+
+### `analytics_refresh`
+- Refreshes materialized views like `ops.mv_active_users_d`
+
+## Security & RLS
+
+- **Tenant isolation**: All tables filtered by `tenant_id` membership
+- **Envelope encryption**: Sensitive files require `black.envelopes` grants
+- **Compliance gating**: `compliance.can_download_payload()` checks country blocks
+- **Audit trail**: `ops.audit_log` and `ops.access_log`
+
+## Testing
+
+Run acceptance tests to verify:
+- RLS isolation (user A can't see tenant B data)
+- Payload gating (no envelope grant → 403)
+- Jurisdiction blocks (blocked country → 403)
+- Billing/rev-share calculations
+
+```bash
+# Using REST client (VS Code extension) or curl
+# See tests/acceptance.http
+```
+
+## Key RPCs
+
+- `black.authorize_payload_download(p_payload_id uuid)` - Download authorization
+- `black.share_payload(...)` - Grant access via wrapped DEK
+- `black.revoke_payload(...)` - Revoke access
+- `fio.bind_default_handle(p_persona_id uuid, p_username text)` - Assign `@qripto` handle
+- `billing.apply_revshare_for_invoice(p_invoice_id uuid)` - Calculate rev-share splits
+
+## Phase 2 Roadmap
+
+- [ ] Hybrid storage connectors (IPFS, ICP, Arweave)
+- [ ] Server-side re-encryption for tier migration
+- [ ] DVN signature verification
+- [ ] Multi-attribution models (last-touch, linear, time-decay)
+- [ ] Enhanced compliance rules engine
+
+## Support
+
+For questions or issues, refer to the [Lovable Documentation](https://docs.lovable.dev/) or join the [Discord community](https://discord.com/channels/1119885301872070706/1280461670979993613).
+
+---
+
+**License**: MIT

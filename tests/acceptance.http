@@ -1,0 +1,156 @@
+# QubeBase Acceptance Tests
+# Test RLS isolation, file caps, jurisdiction blocks, and entitlements
+# Use VS Code REST Client extension or curl
+
+### Variables
+@apiUrl = http://localhost:54321
+@anonKey = YOUR_ANON_KEY_HERE
+@serviceKey = YOUR_SERVICE_KEY_HERE
+
+### Test 1: RLS Isolation - User A cannot see Tenant B contacts
+# Login as Alice (tenant 1, editor)
+POST {{apiUrl}}/auth/v1/token?grant_type=password
+Content-Type: application/json
+
+{
+  "email": "alice@example.com",
+  "password": "testpass123"
+}
+
+###
+# Try to access Tenant 2 contacts (should return empty or 403)
+GET {{apiUrl}}/rest/v1/crm.contacts?tenant_id=eq.10000000-0000-0000-0000-000000000002
+Authorization: Bearer {{anonKey}}
+apikey: {{anonKey}}
+
+### Test 2: Payload gating - No envelope grant should fail
+# Create a payload without envelope grant for user
+POST {{apiUrl}}/rest/v1/black.payloads
+Authorization: Bearer {{anonKey}}
+apikey: {{anonKey}}
+Content-Type: application/json
+
+{
+  "instance_id": "30000000-0000-0000-0000-000000000001",
+  "tenant_id": "10000000-0000-0000-0000-000000000001",
+  "class": "sensitive",
+  "size_bytes": 1048576,
+  "storage_tier": "central_object",
+  "uri": "s3://test/payload.bin"
+}
+
+###
+# Try to download without envelope (should fail)
+POST {{apiUrl}}/functions/v1/issue_signed_url
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "payload_id": "PAYLOAD_ID_FROM_ABOVE"
+}
+
+### Test 3: Jurisdiction block - Blocked country returns 403
+# Set country block for tenant
+POST {{apiUrl}}/rest/v1/compliance.country_blocks
+Authorization: Bearer {{serviceKey}}
+apikey: {{serviceKey}}
+Content-Type: application/json
+
+{
+  "subject_type": "tenant",
+  "subject_id": "10000000-0000-0000-0000-000000000001",
+  "iso_country": "XX",
+  "reason": "Test block",
+  "active": true
+}
+
+###
+# Try to download with blocked country header
+POST {{apiUrl}}/functions/v1/issue_signed_url
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+X-Country-Code: XX
+
+{
+  "payload_id": "PAYLOAD_ID_HERE"
+}
+
+### Test 4: File size cap enforcement
+# Upload file exceeding 250 MB (should fail)
+POST {{apiUrl}}/functions/v1/upload_intake
+Authorization: Bearer {{anonKey}}
+Content-Type: application/json
+
+{
+  "tenant_id": "10000000-0000-0000-0000-000000000001",
+  "instance_id": "30000000-0000-0000-0000-000000000001",
+  "class": "standard",
+  "size_bytes": 300000000,
+  "mime_type": "video/mp4"
+}
+
+### Test 5: Billing rev-share calculation
+# Create invoice and apply rev-share
+POST {{apiUrl}}/rest/v1/billing.invoices
+Authorization: Bearer {{serviceKey}}
+apikey: {{serviceKey}}
+Content-Type: application/json
+
+{
+  "account_id": "ACCOUNT_ID_HERE",
+  "period_start": "2025-01-01",
+  "period_end": "2025-01-31",
+  "status": "open"
+}
+
+###
+# Apply rev-share calculation
+POST {{apiUrl}}/rest/v1/rpc/apply_revshare_for_invoice
+Authorization: Bearer {{serviceKey}}
+apikey: {{serviceKey}}
+Content-Type: application/json
+
+{
+  "p_invoice_id": "INVOICE_ID_FROM_ABOVE"
+}
+
+### Test 6: FIO handle binding
+# Bind default @qripto handle
+POST {{apiUrl}}/rest/v1/rpc/bind_default_handle
+Authorization: Bearer {{anonKey}}
+apikey: {{anonKey}}
+Content-Type: application/json
+
+{
+  "p_persona_id": "50000000-0000-0000-0000-000000000001",
+  "p_username": "testuser"
+}
+
+### Test 7: Entitlement read access
+# Grant entitlement to instance
+POST {{apiUrl}}/rest/v1/registry_mirror.entitlements
+Authorization: Bearer {{serviceKey}}
+apikey: {{serviceKey}}
+Content-Type: application/json
+
+{
+  "subject_type": "user",
+  "subject_id": "00000000-0000-0000-0000-000000000002",
+  "instance_id": "INSTANCE_ID_HERE",
+  "rights": ["read", "access"]
+}
+
+###
+# Read instance metadata (should succeed with entitlement)
+GET {{apiUrl}}/rest/v1/registry_mirror.instances?id=eq.INSTANCE_ID_HERE
+Authorization: Bearer {{anonKey}}
+apikey: {{anonKey}}
+
+### Expected Results Summary
+# Test 1: Empty result or 403 (RLS blocks cross-tenant access)
+# Test 2: 403 or error (no envelope grant)
+# Test 3: 403 (country blocked)
+# Test 4: 400 or error (file too large)
+# Test 5: Invoice total updated with line items
+# Test 6: Returns FIO address like "testuser@qripto"
+# Test 7: Instance metadata visible with entitlement
