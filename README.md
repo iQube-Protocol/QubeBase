@@ -1,6 +1,8 @@
 # QubeBase - Core Hub Database for AgentiQ Platform
 
-**Production-grade Supabase backend** powering the Aigent Z ecosystem with multi-tenant isolation, encrypted file storage (BlakQube), compliance controls, billing with revenue sharing, and DID/FIO identity management.
+**Production-grade Supabase backend** powering the Aigent Z ecosystem with multi-tenant isolation, CRM, and Registry mirroring.
+
+> **🚀 Current Implementation**: This is a **hybrid MVP** approach - core features are implemented with CRM and Registry mirroring, while advanced features (envelope encryption, billing) are deferred for Phase 2.
 
 ## Architecture Overview
 
@@ -10,15 +12,23 @@ QubeBase provides a unified data layer for multiple apps:
 - **Moneypenny**: Administrative and operational tools
 - **AgentIQ**: Agentic AI orchestration
 
-### Core Features
+### Core Features (Implemented ✅)
 
-- **Multi-tenant isolation** via RLS policies with role-based access (Uber Admin, Franchise Admin, Site Admin, Editor, Viewer, End User)
-- **BlakQube Phase-1**: Client-side envelope encryption, 25 MB soft / 250 MB hard caps per file
-- **Compliance**: KYC attestations, jurisdiction blocking, PII masking
-- **Billing & Rev-Share**: Attribution tracking (first-touch default), formula-based splits
-- **DID/FIO**: Decentralized identity with default `@qripto` handles
+- **Multi-tenant isolation** via RLS policies with role-based access
+- **CRM**: Contacts and accounts with tenant-scoped access
+- **Registry Mirror**: Template/instance model with blockchain proofs and entitlements
+- **Edge Functions**: Webhook integration for registry updates
+
+### Deferred Features (Phase 2 📋)
+
+The following features are documented but not yet implemented. They can be added incrementally as needed:
+
+- **BlakQube Encryption**: Client-side envelope encryption with `black.envelopes`, DEK wrapping, and secure sharing
+- **Billing & Rev-Share**: Attribution tracking, formula-based splits, metering, and invoicing
+- **Advanced Compliance**: KYC attestations, jurisdiction blocking, PII masking
+- **DID/FIO**: Decentralized identity with FIO handles
 - **A2A/MCP**: Tool and agent catalogs with quota-based invocations
-- **Registry Mirror**: Template/instance model with blockchain proofs
+- **Hybrid Storage**: IPFS, ICP, and Arweave connectors
 
 ## Quick Start
 
@@ -77,19 +87,19 @@ supabase gen types typescript --project-id <project-id> > src/lib/database.types
 
 ## Schemas
 
-| Schema | Purpose |
-|--------|---------|
-| `iam` | Users, tenants, sites, memberships |
-| `crm` | Contacts, accounts, deals, activities |
-| `registry_mirror` | Templates, instances, entitlements, proofs |
-| `black` | Payloads, envelopes (encryption), chunks, derivatives |
-| `media` | Assets, feed items, mint intents |
-| `agentic` | Tools, agents, grants, invocations |
-| `compliance` | KYC attestations, country blocks, jurisdiction policies |
-| `billing` | Accounts, meters, invoices, line items, rev-share rules |
-| `did` | Identities, personas, keys |
-| `fio` | FIO handles (default: `@qripto`) |
-| `ops` | Audit logs, access logs, analytics MVs |
+| Schema | Status | Purpose |
+|--------|--------|---------|
+| `public` | ✅ Implemented | Core tables: tenants, sites, roles, user_roles |
+| `crm` | ✅ Implemented | Contacts and accounts with tenant isolation |
+| `registry_mirror` | ✅ Implemented | Templates, instances, entitlements, proofs |
+| `black` | 📋 Phase 2 | Payloads, envelopes (encryption), chunks, derivatives |
+| `media` | 📋 Phase 2 | Assets, feed items, mint intents |
+| `agentic` | 📋 Phase 2 | Tools, agents, grants, invocations |
+| `compliance` | 📋 Phase 2 | KYC attestations, country blocks, jurisdiction policies |
+| `billing` | 📋 Phase 2 | Accounts, meters, invoices, line items, rev-share rules |
+| `did` | 📋 Phase 2 | Identities, personas, keys |
+| `fio` | 📋 Phase 2 | FIO handles (default: `@qripto`) |
+| `ops` | 📋 Phase 2 | Audit logs, access logs, analytics MVs |
 
 ## Environment Variables
 
@@ -99,42 +109,58 @@ See `.env.sample` for required variables:
 
 ## Edge Functions
 
-### `upload_intake`
-- Enforces 25 MB soft / 250 MB hard caps
-- MIME validation, virus scanning (TODO)
+### `registry_webhook` ✅
+**Status**: Implemented and ready to use
+
+- Receives webhook events from external registry (DVN/ICP)
+- Upserts `registry_mirror.templates`, `instances`, `proofs`, and `entitlements`
+- Handles event types: `template.upsert`, `instance.upsert`, `proof.append`, `entitlement.grant`
+- Uses service role for database writes
+- TODO: Add signature verification for webhook security
+
+### `upload_intake` 📋
+**Status**: Phase 2 - Requires `black.payloads` schema
+
+- Will enforce 25 MB soft / 250 MB hard caps
+- MIME validation, virus scanning
 - Creates `black.payloads`, `black.chunks`, `media.assets`
-- Reads client-side envelope metadata
 
-### `issue_signed_url`
-- Sets `app.request_country` from request headers
-- Calls `black.authorize_payload_download` RPC
-- Issues short-lived signed URL from Supabase Storage
-- Logs to `ops.access_log`
+### `issue_signed_url` 📋
+**Status**: Phase 2 - Requires envelope encryption schema
 
-### `generate_derivatives`
-- Ephemeral server-side decrypt (if policy allows)
-- Generates thumbnails, preview clips
-- Writes `black.derivatives`
+- Will authorize downloads via `black.authorize_payload_download` RPC
+- Issue short-lived signed URLs from Supabase Storage
+- Country-based access control
 
-### `registry_webhook`
-- Verifies DVN/ICP signatures (TODO: actual verification)
-- Upserts `registry_mirror.templates/instances/proofs/entitlements`
-- Idempotency via `txid` or `instance_id`
+### `generate_derivatives` 📋
+**Status**: Phase 2 - Requires encryption and derivatives schema
 
-### `ipfs_icp_connector` (Phase 2 stub)
-- Manages `storage.replicas` table
-- Handles prefetch/hydration state machine
-- No external IPFS/ICP calls yet
+- Will generate thumbnails and preview clips
+- Ephemeral server-side decryption
 
-### `analytics_refresh`
-- Refreshes materialized views like `ops.mv_active_users_d`
+### `ipfs_icp_connector` 📋
+**Status**: Phase 2 - Hybrid storage connector
+
+- Will manage IPFS/ICP replication
+- Prefetch/hydration state machine
+
+### `analytics_refresh` 📋
+**Status**: Phase 2 - Requires ops schema
+
+- Will refresh materialized views for analytics
 
 ## Security & RLS
 
-- **Tenant isolation**: All tables filtered by `tenant_id` membership
-- **Envelope encryption**: Sensitive files require `black.envelopes` grants
-- **Compliance gating**: `compliance.can_download_payload()` checks country blocks
-- **Audit trail**: `ops.audit_log` and `ops.access_log`
+### Current Implementation ✅
+- **Tenant isolation**: All CRM and registry tables filtered by tenant membership via RLS
+- **Role-based access**: Users must have roles in `user_roles` to access tenant data
+- **Public registry data**: Templates, instances, and proofs are publicly readable (by design)
+- **Tenant-scoped entitlements**: Only users in the entitlement's tenant can view it
+
+### Phase 2 Security Features 📋
+- **Envelope encryption**: Will require `black.envelopes` grants for file access
+- **Compliance gating**: Will check country blocks via `compliance.can_download_payload()`
+- **Audit trail**: Will log all access to `ops.audit_log` and `ops.access_log`
 
 ## Testing
 
@@ -149,21 +175,48 @@ Run acceptance tests to verify:
 # See tests/acceptance.http
 ```
 
-## Key RPCs
-
-- `black.authorize_payload_download(p_payload_id uuid)` - Download authorization
-- `black.share_payload(...)` - Grant access via wrapped DEK
-- `black.revoke_payload(...)` - Revoke access
-- `fio.bind_default_handle(p_persona_id uuid, p_username text)` - Assign `@qripto` handle
-- `billing.apply_revshare_for_invoice(p_invoice_id uuid)` - Calculate rev-share splits
-
 ## Phase 2 Roadmap
 
-- [ ] Hybrid storage connectors (IPFS, ICP, Arweave)
-- [ ] Server-side re-encryption for tier migration
-- [ ] DVN signature verification
-- [ ] Multi-attribution models (last-touch, linear, time-decay)
-- [ ] Enhanced compliance rules engine
+When you're ready to add these features, here's the implementation order we recommend:
+
+### 1. BlakQube Encryption (`black` schema)
+- [ ] Add `black.payloads`, `black.envelopes`, `black.chunks`, `black.derivatives` tables
+- [ ] Implement `upload_intake` edge function with file caps
+- [ ] Add `black.authorize_payload_download()` RPC
+- [ ] Add `black.share_payload()` and `black.revoke_payload()` RPCs
+- [ ] Enable `issue_signed_url` and `generate_derivatives` functions
+
+### 2. Billing & Rev-Share (`billing` schema)
+- [ ] Add `billing.accounts`, `billing.meters`, `billing.invoices`, `billing.line_items` tables
+- [ ] Add `billing.revshare_rules`, `billing.revshare_splits`, `billing.attribution_models` tables
+- [ ] Implement `billing.apply_revshare_for_invoice()` RPC
+- [ ] Add metering and invoice generation logic
+
+### 3. Compliance (`compliance` schema)
+- [ ] Add `compliance.kyc_levels`, `compliance.kyc_attestations` tables
+- [ ] Add `compliance.jurisdiction_policies`, `compliance.country_blocks` tables
+- [ ] Implement `compliance.can_download_payload()` RPC
+- [ ] Add PII masking functions
+
+### 4. DID/FIO Identity (`did` and `fio` schemas)
+- [ ] Add `did.identities`, `did.personas`, `did.keys` tables
+- [ ] Add `fio.handles` table with `@qripto` default
+- [ ] Implement `fio.bind_default_handle()` RPC
+
+### 5. A2A/MCP Agentic (`agentic` schema)
+- [ ] Add `agentic.tools`, `agentic.agents`, `agentic.grants` tables
+- [ ] Add `agentic.invocations` for quota tracking
+- [ ] Implement agent catalog and invocation metering
+
+### 6. Hybrid Storage
+- [ ] Implement `ipfs_icp_connector` edge function
+- [ ] Add `storage.replicas` state machine
+- [ ] Add support for Arweave and other providers
+
+### 7. Operations & Analytics (`ops` schema)
+- [ ] Add `ops.audit_log` and `ops.access_log` tables
+- [ ] Add materialized views like `ops.mv_active_users_d`
+- [ ] Enable `analytics_refresh` function
 
 ## Support
 
