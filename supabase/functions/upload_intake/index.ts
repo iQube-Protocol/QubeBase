@@ -2,8 +2,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const SOFT = Number(Deno.env.get("APP_FILE_SOFT_CAP_BYTES") ?? 25 * 1024 * 1024);
-const HARD = Number(Deno.env.get("APP_FILE_HARD_CAP_BYTES") ?? 250 * 1024 * 1024);
+const SOFT = Number(Deno.env.get("APP_FILE_SOFT_CAP_BYTES") ?? 524288000);   // 500 MB
+const HARD = Number(Deno.env.get("APP_FILE_HARD_CAP_BYTES") ?? 1073741824);  // 1 GB
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
