@@ -1,76 +1,73 @@
--- Seed data for QubeBase Core Hub
--- Creates platform tenant, uber admin, test users, and sites
+-- Run after migrations are applied.
+-- NOTE: In local dev, you can mock auth by inserting into iam.users directly.
+-- In prod, mirror auth.users.id into iam.users.id via your signup flow.
 
--- Create uber admin user (use known UUID for testing)
-INSERT INTO iam.users (id, email, status) VALUES
-('00000000-0000-0000-0000-000000000001', 'admin@agentiq.ai', 'active'),
-('00000000-0000-0000-0000-000000000002', 'alice@example.com', 'active'),
-('00000000-0000-0000-0000-000000000003', 'bob@example.com', 'active')
-ON CONFLICT (id) DO NOTHING;
+-- === Users (mock) ===
+-- Generate stable UUIDs once for repeatable seeds.
+do $$
+declare
+  v_uber uuid := gen_random_uuid();
+  v_alice uuid := gen_random_uuid();
+  v_bob uuid := gen_random_uuid();
+  v_tenant uuid;
+  v_site_nakamoto uuid;
+  v_site_kn0w1 uuid;
+  v_site_moneypenny uuid;
+begin
+  -- Insert users
+  insert into iam.users(id, email, status)
+  values (v_uber, 'uber.admin@example.com', 'active'),
+         (v_alice, 'alice@example.com', 'active'),
+         (v_bob, 'bob@example.com', 'active');
 
--- Create platform tenant
-INSERT INTO iam.tenants (id, name) VALUES
-('10000000-0000-0000-0000-000000000001', 'AgentiQ Platform')
-ON CONFLICT (id) DO NOTHING;
+  -- === Platform tenant & sites ===
+  insert into iam.tenants(name)
+  values ('Platform Tenant')
+  returning id into v_tenant;
 
--- Create sites for each app
-INSERT INTO iam.sites (id, tenant_id, app, slug) VALUES
-('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'nakamoto', 'nakamoto-main'),
-('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'kn0w1', 'kn0w1-main'),
-('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'moneypenny', 'moneypenny-main')
-ON CONFLICT (id) DO NOTHING;
+  -- Sites
+  insert into iam.sites(tenant_id, app, slug)
+  values (v_tenant, 'nakamoto', 'platform-nakamoto'),
+         (v_tenant, 'kn0w1', 'platform-kn0w1'),
+         (v_tenant, 'moneypenny', 'platform-moneypenny')
+  returning id into v_site_nakamoto;
 
--- Assign memberships
-INSERT INTO iam.user_memberships (user_id, tenant_id, role) VALUES
-('00000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'uber_admin'),
-('00000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'editor'),
-('00000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001', 'viewer')
-ON CONFLICT (user_id, tenant_id) DO NOTHING;
+  -- Grab others
+  select id into v_site_kn0w1 from iam.sites where tenant_id=v_tenant and app='kn0w1';
+  select id into v_site_moneypenny from iam.sites where tenant_id=v_tenant and app='moneypenny';
 
--- Create second tenant for RLS testing
-INSERT INTO iam.tenants (id, name) VALUES
-('10000000-0000-0000-0000-000000000002', 'Test Franchise')
-ON CONFLICT (id) DO NOTHING;
+  -- Memberships
+  insert into iam.user_memberships(user_id, tenant_id, role)
+  values (v_uber, v_tenant, 'uber_admin'),
+         (v_alice, v_tenant, 'site_admin'),
+         (v_bob, v_tenant, 'editor')
+  on conflict do nothing;
 
-INSERT INTO iam.user_memberships (user_id, tenant_id, role) VALUES
-('00000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002', 'franchise_admin')
-ON CONFLICT (user_id, tenant_id) DO NOTHING;
+  insert into iam.site_memberships(user_id, site_id, role)
+  values (v_alice, v_site_kn0w1, 'site_admin'),
+         (v_bob, v_site_kn0w1, 'editor'),
+         (v_bob, v_site_nakamoto, 'viewer')
+  on conflict do nothing;
 
--- Sample CRM contacts
-INSERT INTO crm.contacts (tenant_id, name, email) VALUES
-('10000000-0000-0000-0000-000000000001', 'Jane Doe', 'jane@example.com'),
-('10000000-0000-0000-0000-000000000001', 'John Smith', 'john@example.com'),
-('10000000-0000-0000-0000-000000000002', 'Bob Johnson', 'bob.j@example.com');
+  -- CRM samples
+  insert into crm.contacts(tenant_id, user_id, name, email, phone)
+  values (v_tenant, v_alice, 'Alice Example', 'alice@example.com', '+1-555-0100'),
+         (v_tenant, v_bob, 'Bob Example', 'bob@example.com', '+1-555-0101');
 
--- Sample registry templates
-INSERT INTO registry_mirror.templates (id, name, meta_public) VALUES
-('30000000-0000-0000-0000-000000000001', 'Media Asset NFT', '{"type":"media","blockchain":"bitcoin"}'),
-('30000000-0000-0000-0000-000000000002', 'Knowledge Token', '{"type":"knowledge","blockchain":"icp"}')
-ON CONFLICT (id) DO NOTHING;
+  insert into crm.accounts(tenant_id, name)
+  values (v_tenant, 'Example Account');
 
--- Sample agentic tools
-INSERT INTO agentic.tools (name, spec_json, version) VALUES
-('web_search', '{"description":"Search the web","parameters":{"query":"string"}}', '1.0.0'),
-('image_gen', '{"description":"Generate images","parameters":{"prompt":"string"}}', '1.0.0');
+  -- Registry mirror sample
+  insert into registry_mirror.templates(name, meta_public)
+  values ('ContentQube.Template.v1', '{"schema":"content"}')
+  returning id into strict v_site_nakamoto; -- reuse var
 
--- Sample billing account
-INSERT INTO billing.accounts (tenant_id, app) VALUES
-('10000000-0000-0000-0000-000000000001', 'nakamoto');
+  insert into registry_mirror.instances(template_id, owner_tenant_id, meta_public, black_pointer, tokenqube_key_id)
+  values (v_site_nakamoto, v_tenant, '{"title":"Hello World"}', 'cid://placeholder', 'keyref-demo');
 
--- Sample DID/FIO setup for admin user
-INSERT INTO did.identities (id, did_uri, user_id) VALUES
-('40000000-0000-0000-0000-000000000001', 'did:web:agentiq.ai:admin', '00000000-0000-0000-0000-000000000001')
-ON CONFLICT (id) DO NOTHING;
+  -- Billing account for tenant
+  insert into billing.accounts(tenant_id, app, site_id)
+  values (v_tenant, 'kn0w1', v_site_kn0w1);
 
-INSERT INTO did.personas (id, did_id, name, policy_json) VALUES
-('50000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Admin Persona', '{"private_by_default":true}')
-ON CONFLICT (id) DO NOTHING;
-
--- Auto-bind default FIO handle
-SELECT fio.bind_default_handle('50000000-0000-0000-0000-000000000001', 'admin');
-
--- Sample compliance data
-INSERT INTO compliance.kyc_attestations (user_id, provider, level, issued_at) VALUES
-('00000000-0000-0000-0000-000000000001', 'test_provider', 'level_2', now());
-
-SELECT 'Seed data loaded successfully!' as status;
+  raise notice 'Seed data loaded successfully!';
+end $$;

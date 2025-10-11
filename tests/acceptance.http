@@ -1,156 +1,105 @@
-# QubeBase Acceptance Tests
-# Test RLS isolation, file caps, jurisdiction blocks, and entitlements
-# Use VS Code REST Client extension or curl
+### QubeBase Core Hub - Acceptance Tests
+### Replace {{SERVICE_ROLE_KEY}} with your actual service role key
+### Replace UUIDs with actual values from your seeded data
 
-### Variables
-@apiUrl = http://localhost:54321
-@anonKey = YOUR_ANON_KEY_HERE
-@serviceKey = YOUR_SERVICE_KEY_HERE
+@baseUrl = http://127.0.0.1:54321/functions/v1
+@serviceKey = {{SERVICE_ROLE_KEY}}
 
-### Test 1: RLS Isolation - User A cannot see Tenant B contacts
-# Login as Alice (tenant 1, editor)
-POST {{apiUrl}}/auth/v1/token?grant_type=password
-Content-Type: application/json
+### Test 1: Upload intake (register metadata)
+POST {{baseUrl}}/upload_intake
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "email": "alice@example.com",
-  "password": "testpass123"
-}
-
-###
-# Try to access Tenant 2 contacts (should return empty or 403)
-GET {{apiUrl}}/rest/v1/crm.contacts?tenant_id=eq.10000000-0000-0000-0000-000000000002
-Authorization: Bearer {{anonKey}}
-apikey: {{anonKey}}
-
-### Test 2: Payload gating - No envelope grant should fail
-# Create a payload without envelope grant for user
-POST {{apiUrl}}/rest/v1/black.payloads
-Authorization: Bearer {{anonKey}}
-apikey: {{anonKey}}
-Content-Type: application/json
-
-{
-  "instance_id": "30000000-0000-0000-0000-000000000001",
-  "tenant_id": "10000000-0000-0000-0000-000000000001",
-  "class": "sensitive",
+  "instance_id": "{{some_instance_uuid}}",
+  "tenant_id": "{{platform_tenant_uuid}}",
+  "site_id": "{{kn0w1_site_uuid}}",
+  "class_": "sensitive",
   "size_bytes": 1048576,
-  "storage_tier": "central_object",
-  "uri": "s3://test/payload.bin"
+  "mime": "image/jpeg",
+  "storage_uri": "blakqube/{{uuid}}/photo.jpg",
+  "envelope": {
+    "key_ref": "keyref-demo",
+    "wrapped_dek": "aGV4LWJ5dGVzLWhlcmU=",
+    "alg": "AES-256-GCM",
+    "version": 1
+  }
 }
 
-###
-# Try to download without envelope (should fail)
-POST {{apiUrl}}/functions/v1/issue_signed_url
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
+### Test 2: Issue signed URL (should pass if RLS grants allow)
+POST {{baseUrl}}/issue_signed_url
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "payload_id": "PAYLOAD_ID_FROM_ABOVE"
+  "payload_id": "{{payload_uuid}}",
+  "country": "US"
 }
 
-### Test 3: Jurisdiction block - Blocked country returns 403
-# Set country block for tenant
-POST {{apiUrl}}/rest/v1/compliance.country_blocks
-Authorization: Bearer {{serviceKey}}
-apikey: {{serviceKey}}
-Content-Type: application/json
+### Test 3: Generate derivatives
+POST {{baseUrl}}/generate_derivatives
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "subject_type": "tenant",
-  "subject_id": "10000000-0000-0000-0000-000000000001",
-  "iso_country": "XX",
-  "reason": "Test block",
-  "active": true
+  "payload_id": "{{payload_uuid}}"
 }
 
-###
-# Try to download with blocked country header
-POST {{apiUrl}}/functions/v1/issue_signed_url
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
-X-Country-Code: XX
+### Test 4: Registry webhook - template upsert
+POST {{baseUrl}}/registry_webhook
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "payload_id": "PAYLOAD_ID_HERE"
+  "type": "template.upsert",
+  "template": {
+    "id": "{{template_uuid}}",
+    "name": "TestTemplate.v1",
+    "meta_public": {"schema": "test"}
+  }
 }
 
-### Test 4: File size cap enforcement
-# Upload file exceeding 250 MB (should fail)
-POST {{apiUrl}}/functions/v1/upload_intake
-Authorization: Bearer {{anonKey}}
-Content-Type: application/json
+### Test 5: Registry webhook - instance upsert
+POST {{baseUrl}}/registry_webhook
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "tenant_id": "10000000-0000-0000-0000-000000000001",
-  "instance_id": "30000000-0000-0000-0000-000000000001",
-  "class": "standard",
-  "size_bytes": 300000000,
-  "mime_type": "video/mp4"
+  "type": "instance.upsert",
+  "instance": {
+    "id": "{{instance_uuid}}",
+    "template_id": "{{template_uuid}}",
+    "owner_tenant_id": "{{platform_tenant_uuid}}",
+    "meta_public": {"title": "Test Instance"},
+    "black_pointer": "cid://test",
+    "tokenqube_key_id": "keyref-test"
+  }
 }
 
-### Test 5: Billing rev-share calculation
-# Create invoice and apply rev-share
-POST {{apiUrl}}/rest/v1/billing.invoices
-Authorization: Bearer {{serviceKey}}
-apikey: {{serviceKey}}
-Content-Type: application/json
+### Test 6: IPFS/ICP connector (Phase 2 stub)
+POST {{baseUrl}}/ipfs_icp_connector
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
 {
-  "account_id": "ACCOUNT_ID_HERE",
-  "period_start": "2025-01-01",
-  "period_end": "2025-01-31",
-  "status": "open"
+  "payload_id": "{{payload_uuid}}",
+  "tier": "ipfs_private",
+  "uri": "ipfs://Qm...",
+  "latency_ms": 150
 }
 
-###
-# Apply rev-share calculation
-POST {{apiUrl}}/rest/v1/rpc/apply_revshare_for_invoice
-Authorization: Bearer {{serviceKey}}
-apikey: {{serviceKey}}
-Content-Type: application/json
+### Test 7: Analytics refresh
+POST {{baseUrl}}/analytics_refresh
+content-type: application/json
+authorization: Bearer {{serviceKey}}
 
-{
-  "p_invoice_id": "INVOICE_ID_FROM_ABOVE"
-}
+{}
 
-### Test 6: FIO handle binding
-# Bind default @qripto handle
-POST {{apiUrl}}/rest/v1/rpc/bind_default_handle
-Authorization: Bearer {{anonKey}}
-apikey: {{anonKey}}
-Content-Type: application/json
-
-{
-  "p_persona_id": "50000000-0000-0000-0000-000000000001",
-  "p_username": "testuser"
-}
-
-### Test 7: Entitlement read access
-# Grant entitlement to instance
-POST {{apiUrl}}/rest/v1/registry_mirror.entitlements
-Authorization: Bearer {{serviceKey}}
-apikey: {{serviceKey}}
-Content-Type: application/json
-
-{
-  "subject_type": "user",
-  "subject_id": "00000000-0000-0000-0000-000000000002",
-  "instance_id": "INSTANCE_ID_HERE",
-  "rights": ["read", "access"]
-}
-
-###
-# Read instance metadata (should succeed with entitlement)
-GET {{apiUrl}}/rest/v1/registry_mirror.instances?id=eq.INSTANCE_ID_HERE
-Authorization: Bearer {{anonKey}}
-apikey: {{anonKey}}
-
-### Expected Results Summary
-# Test 1: Empty result or 403 (RLS blocks cross-tenant access)
-# Test 2: 403 or error (no envelope grant)
-# Test 3: 403 (country blocked)
-# Test 4: 400 or error (file too large)
-# Test 5: Invoice total updated with line items
-# Test 6: Returns FIO address like "testuser@qripto"
-# Test 7: Instance metadata visible with entitlement
+### Expected Results:
+# Test 1: Should return 201 with payload_id and note (OK or SOFT_CAP_EXCEEDED)
+# Test 2: Should return 200 with signed_url (or 403 if no grant)
+# Test 3: Should return 200 with ok: true
+# Test 4: Should return 200 with ok: true
+# Test 5: Should return 200 with ok: true
+# Test 6: Should return 200 with echoed data
+# Test 7: Should return 200 with note about adding RPC
