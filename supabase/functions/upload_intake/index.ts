@@ -20,17 +20,16 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const {
-      instance_id,
+      name,
+      description,
       tenant_id,
-      site_id,
-      class_: className, // 'sensitive' | 'standard'
       size_bytes,
       mime,
-      storage_uri,       // client-proposed path: e.g., 'blakqube/<uuid>/<filename>'
-      envelope,          // { key_ref, wrapped_dek, alg, version }
+      storage_uri,
+      envelope,  // For future envelope encryption support
     } = body;
 
-    if (!instance_id || !tenant_id || !storage_uri || !size_bytes) {
+    if (!tenant_id || !storage_uri || !size_bytes) {
       return json({ error: "Missing required fields" }, 400);
     }
     if (size_bytes > HARD) return json({ error: `File too large (>${HARD} bytes)` }, 413);
@@ -41,39 +40,34 @@ serve(async (req) => {
       return json({ error: "MIME type not allowed" }, 415);
     }
 
-    // Insert payload row (encrypted blobs assumed; this just registers metadata)
+    // Get authenticated user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return json({ error: "Missing authorization" }, 401);
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) return json({ error: "Unauthorized" }, 401);
+
+    // Insert payload row
     const { data: payload, error } = await supabase
       .from("payloads")
       .insert({
-        instance_id,
         tenant_id,
-        site_id,
-        class: className ?? "standard",
-        size_bytes,
-        storage_tier: "central_object",
-        uri: storage_uri,
-        pii_tag: false,
-        jurisdiction_tags: [],
-        status: "active",
+        name: name ?? "Untitled",
+        description,
+        file_size_bytes: size_bytes,
+        content_type: mime,
+        storage_path: storage_uri,
+        created_by: user.id,
       })
       .select()
       .single();
 
     if (error) return json({ error: error.message }, 400);
 
-    // Optional: save envelope for the uploader (subject could be user/tenant)
-    if (envelope?.key_ref && envelope?.wrapped_dek) {
-      const { error: envErr } = await supabase.from("envelopes").insert({
-        payload_id: payload.id,
-        subject_type: "tenant", // or 'user'/'persona' depending on your flow
-        subject_id: tenant_id,
-        key_ref: envelope.key_ref,
-        wrapped_dek: envelope.wrapped_dek,
-        alg: envelope.alg ?? "AES-256-GCM",
-        version: envelope.version ?? 1,
-      });
-      if (envErr) return json({ error: envErr.message }, 400);
-    }
+    // TODO: Envelope encryption support will be added in Phase 2
+    // if (envelope?.key_ref && envelope?.wrapped_dek) { ... }
 
     // Soft-cap advisory
     const note = size_bytes > SOFT ? "SOFT_CAP_EXCEEDED" : "OK";

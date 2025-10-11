@@ -11,19 +11,51 @@ content-type: application/json
 authorization: Bearer {{serviceKey}}
 
 {
-  "instance_id": "{{some_instance_uuid}}",
+  "name": "Test Upload",
+  "description": "Test file upload",
   "tenant_id": "{{platform_tenant_uuid}}",
-  "site_id": "{{kn0w1_site_uuid}}",
-  "class_": "sensitive",
   "size_bytes": 1048576,
   "mime": "image/jpeg",
-  "storage_uri": "blakqube/{{uuid}}/photo.jpg",
-  "envelope": {
-    "key_ref": "keyref-demo",
-    "wrapped_dek": "aGV4LWJ5dGVzLWhlcmU=",
-    "alg": "AES-256-GCM",
-    "version": 1
-  }
+  "storage_uri": "blakqube/{{uuid}}/photo.jpg"
+}
+
+### Test 1-A: Soft cap test (500 MB file - advisory warning)
+POST {{baseUrl}}/upload_intake
+content-type: application/json
+authorization: Bearer {{serviceKey}}
+
+{
+  "name": "Large Video",
+  "tenant_id": "{{platform_tenant_uuid}}",
+  "size_bytes": 524288000,
+  "mime": "video/mp4",
+  "storage_uri": "blakqube/{{uuid}}/large_video.mp4"
+}
+
+### Test 1-B: Hard cap test (1 GB file - should succeed)
+POST {{baseUrl}}/upload_intake
+content-type: application/json
+authorization: Bearer {{serviceKey}}
+
+{
+  "name": "Max Size Video",
+  "tenant_id": "{{platform_tenant_uuid}}",
+  "size_bytes": 1073741824,
+  "mime": "video/mp4",
+  "storage_uri": "blakqube/{{uuid}}/max_video.mp4"
+}
+
+### Test 1-C: Over hard cap test (1.1 GB file - should fail)
+POST {{baseUrl}}/upload_intake
+content-type: application/json
+authorization: Bearer {{serviceKey}}
+
+{
+  "name": "Too Large Video",
+  "tenant_id": "{{platform_tenant_uuid}}",
+  "size_bytes": 1181116006,
+  "mime": "video/mp4",
+  "storage_uri": "blakqube/{{uuid}}/too_large_video.mp4"
 }
 
 ### Test 2: Issue signed URL (should pass if RLS grants allow)
