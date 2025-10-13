@@ -1,0 +1,8 @@
+# Override root .gitignore for npm publish
+# Do not ignore build output
+!dist
+
+# Exclude source-only and misc
+src/**/*.test.*
+*.log
+node_modules
