@@ -1,0 +1,37 @@
+name: Release SDK Packages
+
+on:
+  push:
+    tags:
+      - 'core-client@*'
+      - 'kn0w1-client@*'
+      - 'a2a-client@*'
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build SDK workspaces
+        run: npm run build:sdk
+
+      - name: Publish changed (scaffold)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node ./scripts/publish.js

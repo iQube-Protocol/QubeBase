@@ -1,14 +1,21 @@
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:sdk": "npm run -w @agentiq/core-client build && npm run -w @agentiq/kn0w1-client build && npm run -w @agentiq/a2a-client build",
+    "build:all": "npm run build && npm run build:sdk",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "publish:changed": "node ./scripts/publish.js",
+    "release:tagged": "npm run build:sdk && npm run publish:changed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
