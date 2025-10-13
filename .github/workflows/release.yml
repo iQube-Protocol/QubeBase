@@ -43,6 +43,9 @@ jobs:
           echo "npm config list:"
           npm config list -l | sed -n '1,120p'
 
+      - name: Test SDK workspaces
+        run: npm run test
+
       - name: Build SDK workspaces
         run: npm run build:sdk
 
