@@ -10,6 +10,7 @@
       "default": "./dist/index.js"
     }
   },
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",

@@ -14,6 +14,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "vitest run --reporter=dot",
     "publish:changed": "node ./scripts/publish.js",
     "release:tagged": "npm run build:sdk && npm run publish:changed"
   },
@@ -86,6 +87,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^1.6.0"
   }
 }
