@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:sdk": "npm run -w @agentiq/core-client build && npm run -w @agentiq/kn0w1-client build && npm run -w @agentiq/a2a-client build",
+    "build:sdk": "npm run -w @qriptoagentiq/core-client build && npm run -w @qriptoagentiq/kn0w1-client build && npm run -w @qriptoagentiq/a2a-client build",
     "build:all": "npm run build && npm run build:sdk",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

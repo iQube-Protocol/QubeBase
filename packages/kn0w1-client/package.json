@@ -1,5 +1,5 @@
 {
-  "name": "@agentiq/kn0w1-client",
+  "name": "@qriptoagentiq/kn0w1-client",
   "version": "0.1.1",
   "private": false,
   "main": "dist/index.js",

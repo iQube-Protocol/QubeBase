@@ -13,9 +13,9 @@ function warn(msg) { console.warn(msg); }
 function err(msg) { console.error(msg); }
 
 const PACKAGES = [
-  { name: '@agentiq/core-client', dir: 'packages/core-client' },
-  { name: '@agentiq/kn0w1-client', dir: 'packages/kn0w1-client' },
-  { name: '@agentiq/a2a-client', dir: 'packages/a2a-client' },
+  { name: '@qriptoagentiq/core-client', dir: 'packages/core-client' },
+  { name: '@qriptoagentiq/kn0w1-client', dir: 'packages/kn0w1-client' },
+  { name: '@qriptoagentiq/a2a-client', dir: 'packages/a2a-client' },
 ];
 
 try {

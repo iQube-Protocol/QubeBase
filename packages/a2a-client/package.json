@@ -1,5 +1,5 @@
 {
-  "name": "@agentiq/a2a-client",
+  "name": "@qriptoagentiq/a2a-client",
   "version": "0.1.1",
   "private": false,
   "main": "dist/index.js",
