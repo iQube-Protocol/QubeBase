@@ -11,15 +11,19 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "package.json",
+    "README.md"
   ],
+  "sideEffects": false,
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
