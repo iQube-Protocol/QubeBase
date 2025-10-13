@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Actual publisher: builds workspaces, compares versions, publishes changed packages to npm
-const { execSync } = require('node:child_process');
-const { readFileSync } = require('node:fs');
-const { join } = require('node:path');
+// Actual publisher: builds workspaces, compares versions, publishes changed packages to npm (ESM compatible)
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 function sh(cmd, opts = {}) {
   return execSync(cmd, { stdio: 'pipe', encoding: 'utf8', ...opts });
