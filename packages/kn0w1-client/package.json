@@ -1,16 +1,21 @@
 {
   "name": "@agentiq/kn0w1-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
     "build": "tsc -b",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {},
-  "devDependencies": { "typescript": "^5.6.3" }
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
 }
