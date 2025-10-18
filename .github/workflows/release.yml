@@ -24,8 +24,8 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies (workspaces)
-        run: npm install --no-audit --no-fund
+      - name: Install dependencies (workspace-safe)
+        run: npm install --workspaces --include-workspace-root --no-audit --no-fund
 
       - name: Configure npm auth
         env:
