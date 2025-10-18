@@ -1,6 +1,6 @@
 # AgentiQ SDK Installation Guide
 
-## Install via npm (after publication)
+## 📦 Install via npm (recommended after publication)
 
 ```bash
 npm i @qriptoagentiq/core-client@^0.1.5 @qriptoagentiq/kn0w1-client@^0.1.5
@@ -8,12 +8,21 @@ npm i @qriptoagentiq/core-client@^0.1.5 @qriptoagentiq/kn0w1-client@^0.1.5
 npm i @supabase/supabase-js@^2.75.0
 ```
 
-## Install via tarballs (immediate)
+## 📦 Install via tarballs (immediate installation)
 
-For immediate installation before npm publication:
+For immediate installation from this repository:
 
 ```bash
 npm i ./releases/qriptoagentiq-core-client-0.1.5.tgz ./releases/qriptoagentiq-kn0w1-client-0.1.5.tgz
+# Peer dependency:
+npm i @supabase/supabase-js@^2.75.0
+```
+
+## 📦 Install from GitHub (alternative)
+
+```bash
+npm i https://raw.githubusercontent.com/iQube-Protocol/QubeBase/main/releases/qriptoagentiq-core-client-0.1.5.tgz \
+      https://raw.githubusercontent.com/iQube-Protocol/QubeBase/main/releases/qriptoagentiq-kn0w1-client-0.1.5.tgz
 # Peer dependency:
 npm i @supabase/supabase-js@^2.75.0
 ```

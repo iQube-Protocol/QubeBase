@@ -3,9 +3,9 @@ name: Release SDK Packages
 on:
   push:
     tags:
-      - 'core-client@*'
-      - 'kn0w1-client@*'
-      - 'a2a-client@*'
+      - '@qriptoagentiq/core-client@*'
+      - '@qriptoagentiq/kn0w1-client@*'
+      - '@qriptoagentiq/a2a-client@*'
       - 'v*'
 
 jobs:

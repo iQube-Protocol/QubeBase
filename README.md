@@ -34,9 +34,15 @@ The following features are documented but not yet implemented. They can be added
 
 ## 📦 SDK Packages
 
-QubeBase includes installable SDK packages for integration with franchise agents:
+QubeBase provides three installable SDK packages published under **`@qriptoagentiq/*`** for integration with Aigent Z and franchise agents (Kn0w1, Nakamoto, MoneyPenny):
 
-### Install (npm - after publication)
+### Available Packages
+
+- **@qriptoagentiq/core-client** (v0.1.5): Core SDK with authentication, IAM, upload/storage, sharing, and metering
+- **@qriptoagentiq/kn0w1-client** (v0.1.5): Kn0w1-specific client for feed and post management  
+- **@qriptoagentiq/a2a-client** (v0.1.5): Agent-to-Agent communication client (scaffold)
+
+### Install via npm (recommended after publication)
 
 ```bash
 npm i @qriptoagentiq/core-client@^0.1.5 @qriptoagentiq/kn0w1-client@^0.1.5
@@ -44,7 +50,7 @@ npm i @qriptoagentiq/core-client@^0.1.5 @qriptoagentiq/kn0w1-client@^0.1.5
 npm i @supabase/supabase-js@^2.75.0
 ```
 
-### Install (tarball - immediate)
+### Install via tarballs (immediate installation)
 
 For immediate installation before npm publication:
 
@@ -54,56 +60,97 @@ npm i ./releases/qriptoagentiq-core-client-0.1.5.tgz ./releases/qriptoagentiq-kn
 npm i @supabase/supabase-js@^2.75.0
 ```
 
+### Install from GitHub (alternative)
+
+```bash
+npm i https://raw.githubusercontent.com/iQube-Protocol/QubeBase/main/releases/qriptoagentiq-core-client-0.1.5.tgz \
+      https://raw.githubusercontent.com/iQube-Protocol/QubeBase/main/releases/qriptoagentiq-kn0w1-client-0.1.5.tgz
+# Peer dependency:
+npm i @supabase/supabase-js@^2.75.0
+```
+
 See [releases/INSTALL.md](./releases/INSTALL.md) for detailed installation instructions.
 
-### Available Packages
-
-- **@qriptoagentiq/core-client**: Core SDK with authentication, IAM, upload/storage, sharing, and metering
-- **@qriptoagentiq/kn0w1-client**: Kn0w1-specific client for feed and post management
-- **@qriptoagentiq/a2a-client**: Agent-to-Agent communication client (scaffold)
-
-### SDK Usage Example
+### Usage Example
 
 ```typescript
 import { initAgentiqClient } from "@qriptoagentiq/core-client";
 import { Kn0w1Client } from "@qriptoagentiq/kn0w1-client";
 
-const core = initAgentiqClient();
+// Initialize core client with Supabase credentials
+const core = initAgentiqClient({
+  url: process.env.VITE_SUPABASE_URL,
+  anonKey: process.env.VITE_SUPABASE_ANON_KEY
+});
+
+// Ensure IAM user exists
 await core.ensureIamUser();
 
-const kn0w1 = new Kn0w1Client(core, { tenantId, siteId });
+// Initialize Kn0w1 client with context
+const kn0w1 = new Kn0w1Client(core, {
+  tenantId: "your-tenant-id",
+  siteId: "your-site-id"
+});
+
+// Fetch feed items
 const feed = await kn0w1.feed(20);
+
+// Upload sensitive post with encryption envelope
+const payloadId = await kn0w1.uploadSensitivePost({
+  instanceId: "instance-uuid",
+  file: myFile,
+  envelope: { key_ref: "...", wrapped_dek: "..." }
+});
+
+// Get signed URL for access
+const url = await kn0w1.getSignedUrl(payloadId, "US");
 ```
 
 ---
 
 ## 🚀 Release Process
 
-To release a new version of the SDK packages:
+### Automatic Release (via Git Tags)
+
+To release a new version, bump the version and push tags:
 
 ```bash
 # Bump version for specific package
-npm version patch -w @qriptoagentiq/core-client
-npm version patch -w @qriptoagentiq/kn0w1-client
-npm version patch -w @qriptoagentiq/a2a-client
-
-# Commit and push with tags (triggers CI/CD)
-git push --follow-tags
+npm version patch -w @qriptoagentiq/core-client && git push --follow-tags
+npm version patch -w @qriptoagentiq/kn0w1-client && git push --follow-tags
+npm version patch -w @qriptoagentiq/a2a-client && git push --follow-tags
 ```
 
-The CI workflow will automatically:
+The CI workflow (`.github/workflows/release.yml`) will automatically:
 1. Build all SDK packages
-2. Run tests
+2. Run tests  
 3. Compare versions with npm registry
-4. Publish changed packages (requires `NPM_TOKEN` secret in GitHub)
+4. Publish changed packages (requires `NPM_TOKEN` secret in GitHub Actions)
 
-### Manual Publishing
+CI is triggered by scoped tags matching:
+- `@qriptoagentiq/core-client@*`
+- `@qriptoagentiq/kn0w1-client@*`
+- `@qriptoagentiq/a2a-client@*`
+
+### Manual Release (via GitHub UI)
+
+A manual workflow (`.github/workflows/release-manual.yml`) is available for publishing from the GitHub Actions tab:
+
+1. Go to **Actions** → **Manual Publish**
+2. Click **Run workflow**
+3. Select package and enter new version (e.g., `0.1.6`)
+4. The workflow will bump, tag, and publish
+
+### Local Development
 
 ```bash
-# Build packages
+# Build SDK packages
 npm run build:sdk
 
-# Publish changed packages
+# Build SDK + generate tarballs
+npm run build:all
+
+# Publish changed packages (requires NPM_TOKEN)
 npm run publish:changed
 ```
 
