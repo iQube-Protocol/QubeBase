@@ -30,6 +30,85 @@ The following features are documented but not yet implemented. They can be added
 - **A2A/MCP**: Tool and agent catalogs with quota-based invocations
 - **Hybrid Storage**: IPFS, ICP, and Arweave connectors
 
+---
+
+## 📦 SDK Packages
+
+QubeBase includes installable SDK packages for integration with franchise agents:
+
+### Install (npm - after publication)
+
+```bash
+npm i @qriptoagentiq/core-client@^0.1.5 @qriptoagentiq/kn0w1-client@^0.1.5
+# Peer dependency:
+npm i @supabase/supabase-js@^2.75.0
+```
+
+### Install (tarball - immediate)
+
+For immediate installation before npm publication:
+
+```bash
+npm i ./releases/qriptoagentiq-core-client-0.1.5.tgz ./releases/qriptoagentiq-kn0w1-client-0.1.5.tgz
+# Peer dependency:
+npm i @supabase/supabase-js@^2.75.0
+```
+
+See [releases/INSTALL.md](./releases/INSTALL.md) for detailed installation instructions.
+
+### Available Packages
+
+- **@qriptoagentiq/core-client**: Core SDK with authentication, IAM, upload/storage, sharing, and metering
+- **@qriptoagentiq/kn0w1-client**: Kn0w1-specific client for feed and post management
+- **@qriptoagentiq/a2a-client**: Agent-to-Agent communication client (scaffold)
+
+### SDK Usage Example
+
+```typescript
+import { initAgentiqClient } from "@qriptoagentiq/core-client";
+import { Kn0w1Client } from "@qriptoagentiq/kn0w1-client";
+
+const core = initAgentiqClient();
+await core.ensureIamUser();
+
+const kn0w1 = new Kn0w1Client(core, { tenantId, siteId });
+const feed = await kn0w1.feed(20);
+```
+
+---
+
+## 🚀 Release Process
+
+To release a new version of the SDK packages:
+
+```bash
+# Bump version for specific package
+npm version patch -w @qriptoagentiq/core-client
+npm version patch -w @qriptoagentiq/kn0w1-client
+npm version patch -w @qriptoagentiq/a2a-client
+
+# Commit and push with tags (triggers CI/CD)
+git push --follow-tags
+```
+
+The CI workflow will automatically:
+1. Build all SDK packages
+2. Run tests
+3. Compare versions with npm registry
+4. Publish changed packages (requires `NPM_TOKEN` secret in GitHub)
+
+### Manual Publishing
+
+```bash
+# Build packages
+npm run build:sdk
+
+# Publish changed packages
+npm run publish:changed
+```
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -79,10 +158,17 @@ supabase gen types typescript --project-id <project-id> > src/lib/database.types
     /registry_webhook      # DVN/ICP template/instance sync
     /ipfs_icp_connector    # Phase-2 hybrid storage (stub)
     /analytics_refresh     # Materialized view refresh
+/packages
+  /core-client            # Core SDK package
+  /kn0w1-client          # Kn0w1 SDK package
+  /a2a-client            # A2A SDK package
+/releases
+  *.tgz                   # Pre-built SDK tarballs
+  INSTALL.md              # Installation guide
 /seed
-  seed.sql                 # Test tenants, users, sites
+  seed.sql                # Test tenants, users, sites
 /tests
-  acceptance.http          # RLS and cap verification tests
+  acceptance.http         # RLS and cap verification tests
 ```
 
 ## Schemas

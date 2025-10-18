@@ -1,36 +1,150 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export interface AgentiqInitOptions {
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
+// ---------- Types ----------
+export type AgentiqContext = {
+  tenantId: string;
+  siteId?: string;
+  isoCountry?: string;
+};
+
+export type Envelope = {
+  key_ref: string;
+  wrapped_dek: string;
+  alg?: string;
+  version?: number;
+};
+
+// ---------- Init ----------
+export function initAgentiqClient(opts?: { url?: string; anonKey?: string }) {
+  const supabase = createClient(
+    opts?.url ?? (import.meta as any).env?.VITE_SUPABASE_URL,
+    opts?.anonKey ?? (import.meta as any).env?.VITE_SUPABASE_ANON_KEY
+  );
+  return new AgentiqCore(supabase);
 }
 
-export interface AgentiqCoreClient {
-  supabase: SupabaseClient;
-  ensureIamUser(): Promise<{ ok: boolean }>;
-}
+export class AgentiqCore {
+  constructor(public supabase: SupabaseClient) {}
 
-export function initAgentiqClient(opts: AgentiqInitOptions = {}): AgentiqCoreClient {
-  const supabaseUrl = opts.supabaseUrl || (typeof window !== 'undefined' ? (window as any).VITE_SUPABASE_URL : process.env.VITE_SUPABASE_URL);
-  const supabaseKey = opts.supabaseAnonKey || (typeof window !== 'undefined' ? (window as any).VITE_SUPABASE_ANON_KEY : process.env.VITE_SUPABASE_ANON_KEY);
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing Supabase URL or anon key. Provide via init options or VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY.');
+  async ensureIamUser() {
+    const { data: au } = await this.supabase.auth.getUser();
+    const user = au?.user;
+    if (!user) throw new Error("Not authenticated");
+    await this.supabase.from("iam.users")
+      .upsert({ id: user.id, email: user.email ?? null })
+      .select().maybeSingle();
+    return user.id;
   }
-  const supabase = createClient(supabaseUrl as string, supabaseKey as string);
 
-  return {
-    supabase,
-    async ensureIamUser() {
-      // Placeholder idempotent mirror: auth.user -> iam.users
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) return { ok: false };
-      try {
-        await supabase.rpc('iam_ensure_user', { p_uid: uid });
-      } catch (_) {
-        // ignore errors; function may not exist in some environments
-      }
-      return { ok: true };
-    },
-  };
+  async myTenants(): Promise<string[]> {
+    const uid = (await this.supabase.auth.getUser()).data.user?.id!;
+    const { data, error } = await this.supabase.rpc("tenants_for_user", { uid });
+    if (error) throw error;
+    return data as string[];
+  }
+
+  async uploadIntake(args: {
+    ctx: AgentiqContext;
+    instanceId: string;
+    file: { name: string; size: number; type: string };
+    storageUri?: string;
+    sensitive?: boolean;
+    envelope?: Envelope;
+  }) {
+    const storageUri = args.storageUri ?? `blakqube/${crypto.randomUUID()}/${args.file.name}`;
+    const body = {
+      instance_id: args.instanceId,
+      tenant_id: args.ctx.tenantId,
+      site_id: args.ctx.siteId,
+      class_: args.sensitive === false ? "standard" : "sensitive",
+      size_bytes: args.file.size,
+      mime: args.file.type || "application/octet-stream",
+      storage_uri: storageUri,
+      envelope: args.sensitive === false ? undefined : args.envelope,
+    };
+    const res = await fetch("/functions/v1/upload_intake", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json();
+    if (!res.ok || !j.ok) throw new Error(j.error || "upload_intake failed");
+    return { payloadId: j.payload_id as string, storageUri, note: j.note as string };
+  }
+
+  async uploadToStorage(storageUri: string, file: File | Blob) {
+    const [bucket, ...rest] = storageUri.split("/");
+    const objectPath = rest.join("/");
+    const up = await this.supabase.storage.from(bucket).upload(objectPath, file, { upsert: true });
+    if (up.error) throw up.error;
+    return up.data.path;
+  }
+
+  async signedUrl(args: { payloadId: string; isoCountry?: string; bucketOverride?: string }) {
+    const res = await fetch("/functions/v1/issue_signed_url", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload_id: args.payloadId, country: args.isoCountry, bucket: args.bucketOverride }),
+    });
+    const j = await res.json();
+    if (!res.ok || !j.ok) throw new Error(j.error || "issue_signed_url failed");
+    return j.signed_url as string;
+  }
+
+  async sharePayload(args: {
+    payloadId: string;
+    subjectType: "user" | "tenant" | "persona";
+    subjectId: string;
+    envelope: Envelope;
+  }) {
+    const { error } = await this.supabase.rpc("black.share_payload", {
+      p_payload_id: args.payloadId,
+      p_subject_type: args.subjectType,
+      p_subject_id: args.subjectId,
+      p_key_ref: args.envelope.key_ref,
+      p_wrapped_dek: args.envelope.wrapped_dek,
+    });
+    if (error) throw error;
+  }
+
+  async revokePayload(args: {
+    payloadId: string;
+    subjectType: "user" | "tenant" | "persona";
+    subjectId: string;
+  }) {
+    const { error } = await this.supabase.rpc("black.revoke_payload", {
+      p_payload_id: args.payloadId,
+      p_subject_type: args.subjectType,
+      p_subject_id: args.subjectId,
+    });
+    if (error) throw error;
+  }
+
+  async myContacts() {
+    return this.supabase.from("app_shared.v_my_contacts").select("*").then(r => {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
+  async kn0w1Feed(limit = 20) {
+    const { data, error } = await this.supabase.from("app_kn0w1.v_feed")
+      .select("*").order("created_at", { ascending: false }).limit(limit);
+    if (error) throw error;
+    return data;
+  }
+
+  async emitMeter(args: { subjectType: "user"|"tenant"|"site"; subjectId: string; metric: string; qty: number; sku?: string; ts?: string }) {
+    const { error } = await this.supabase.from("billing.meters").insert({
+      subject_type: args.subjectType, subject_id: args.subjectId,
+      metric: args.metric, qty: args.qty, sku: args.sku, ts: args.ts ?? new Date().toISOString()
+    });
+    if (error) throw error;
+  }
+
+  async bindFioHandle(personaId: string, username: string) {
+    const { data, error } = await this.supabase.rpc("fio.bind_default_handle", { p_persona_id: personaId, p_username: username });
+    if (error) throw error;
+    return data as string;
+  }
 }
