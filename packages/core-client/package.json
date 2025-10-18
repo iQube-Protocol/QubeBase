@@ -2,21 +2,24 @@
   "name": "@qriptoagentiq/core-client",
   "version": "0.1.6",
   "private": false,
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./crypto/envelope": {
       "types": "./dist/crypto/envelope.d.ts",
+      "import": "./dist/crypto/envelope.js",
       "default": "./dist/crypto/envelope.js"
     }
   },
   "files": [
     "dist",
-    "src",
     "package.json",
     "README.md"
   ],
