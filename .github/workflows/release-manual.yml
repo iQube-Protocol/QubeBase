@@ -46,6 +46,7 @@ jobs:
           git add .
           git commit -m "chore: bump ${PKG} to ${NEW}"
           git tag "${PKG}@${NEW}"
+          git pull --rebase origin main
           git push origin main --follow-tags
 
       - name: Publish to npm
