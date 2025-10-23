@@ -62,7 +62,7 @@ begin
   values ('ContentQube.Template.v1', '{"schema":"content"}')
   returning id into strict v_site_nakamoto; -- reuse var
 
-  insert into registry_mirror.instances(template_id, owner_tenant_id, meta_public, black_pointer, tokenqube_key_id)
+  insert into registry_mirror.instances(template_id, owner_tenant_id, meta_public, blak_pointer, tokenqube_key_id)
   values (v_site_nakamoto, v_tenant, '{"title":"Hello World"}', 'cid://placeholder', 'keyref-demo');
 
   -- Billing account for tenant

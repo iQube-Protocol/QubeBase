@@ -97,7 +97,7 @@ export class AgentiqCore {
     subjectId: string;
     envelope: Envelope;
   }) {
-    const { error } = await this.supabase.rpc("black.share_payload", {
+    const { error } = await this.supabase.rpc("blak.share_payload", {
       p_payload_id: args.payloadId,
       p_subject_type: args.subjectType,
       p_subject_id: args.subjectId,
@@ -112,7 +112,7 @@ export class AgentiqCore {
     subjectType: "user" | "tenant" | "persona";
     subjectId: string;
   }) {
-    const { error } = await this.supabase.rpc("black.revoke_payload", {
+    const { error } = await this.supabase.rpc("blak.revoke_payload", {
       p_payload_id: args.payloadId,
       p_subject_type: args.subjectType,
       p_subject_id: args.subjectId,

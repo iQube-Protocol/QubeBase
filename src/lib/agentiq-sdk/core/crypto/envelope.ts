@@ -7,7 +7,7 @@
  * NOTE:
  *  - Never reuse (DEK, IV) pairs; this uses a fresh 12-byte IV per chunk.
  *  - AAD binds (payloadId, chunkIndex) so chunks can't be reordered undetected.
- *  - Store { key_ref, wrapped_dek, alg:'AES-256-GCM', version:1 } in black.envelopes.
+ *  - Store { key_ref, wrapped_dek, alg:'AES-256-GCM', version:1 } in blak.envelopes.
  */
 
 export type Base64Url = string;

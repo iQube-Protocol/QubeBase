@@ -23,7 +23,7 @@ QubeBase provides a unified data layer for multiple apps:
 
 The following features are documented but not yet implemented. They can be added incrementally as needed:
 
-- **BlakQube Encryption**: Client-side envelope encryption with `black.envelopes`, DEK wrapping, and secure sharing
+- **BlakQube Encryption**: Client-side envelope encryption with `blak.envelopes`, DEK wrapping, and secure sharing
 - **Billing & Rev-Share**: Attribution tracking, formula-based splits, metering, and invoicing
 - **Advanced Compliance**: KYC attestations, jurisdiction blocking, PII masking
 - **DID/FIO**: Decentralized identity with FIO handles
@@ -225,7 +225,7 @@ supabase gen types typescript --project-id <project-id> > src/lib/database.types
 | `public` | ✅ Implemented | Core tables: tenants, sites, roles, user_roles |
 | `crm` | ✅ Implemented | Contacts and accounts with tenant isolation |
 | `registry_mirror` | ✅ Implemented | Templates, instances, entitlements, proofs |
-| `black` | 📋 Phase 2 | Payloads, envelopes (encryption), chunks, derivatives |
+| `blak` | 📋 Phase 2 | Payloads, envelopes (encryption), chunks, derivatives |
 | `media` | 📋 Phase 2 | Assets, feed items, mint intents |
 | `agentic` | 📋 Phase 2 | Tools, agents, grants, invocations |
 | `compliance` | 📋 Phase 2 | KYC attestations, country blocks, jurisdiction policies |
@@ -252,16 +252,16 @@ See `.env.sample` for required variables:
 - TODO: Add signature verification for webhook security
 
 ### `upload_intake` 📋
-**Status**: Phase 2 - Requires `black.payloads` schema
+**Status**: Phase 2 - Requires `blak.payloads` schema
 
 - Will enforce 25 MB soft / 250 MB hard caps
 - MIME validation, virus scanning
-- Creates `black.payloads`, `black.chunks`, `media.assets`
+- Creates `blak.payloads`, `blak.chunks`, `media.assets`
 
 ### `issue_signed_url` 📋
 **Status**: Phase 2 - Requires envelope encryption schema
 
-- Will authorize downloads via `black.authorize_payload_download` RPC
+- Will authorize downloads via `blak.authorize_payload_download` RPC
 - Issue short-lived signed URLs from Supabase Storage
 - Country-based access control
 
@@ -291,7 +291,7 @@ See `.env.sample` for required variables:
 - **Tenant-scoped entitlements**: Only users in the entitlement's tenant can view it
 
 ### Phase 2 Security Features 📋
-- **Envelope encryption**: Will require `black.envelopes` grants for file access
+- **Envelope encryption**: Will require `blak.envelopes` grants for file access
 - **Compliance gating**: Will check country blocks via `compliance.can_download_payload()`
 - **Audit trail**: Will log all access to `ops.audit_log` and `ops.access_log`
 
@@ -312,11 +312,11 @@ Run acceptance tests to verify:
 
 When you're ready to add these features, here's the implementation order we recommend:
 
-### 1. BlakQube Encryption (`black` schema)
-- [ ] Add `black.payloads`, `black.envelopes`, `black.chunks`, `black.derivatives` tables
+### 1. BlakQube Encryption (`blak` schema)
+- [ ] Add `blak.payloads`, `blak.envelopes`, `blak.chunks`, `blak.derivatives` tables
 - [ ] Implement `upload_intake` edge function with file caps
-- [ ] Add `black.authorize_payload_download()` RPC
-- [ ] Add `black.share_payload()` and `black.revoke_payload()` RPCs
+- [ ] Add `blak.authorize_payload_download()` RPC
+- [ ] Add `blak.share_payload()` and `blak.revoke_payload()` RPCs
 - [ ] Enable `issue_signed_url` and `generate_derivatives` functions
 
 ### 2. Billing & Rev-Share (`billing` schema)
