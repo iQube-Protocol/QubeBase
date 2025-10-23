@@ -13,10 +13,33 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createServiceClient(req);
+    // Create authenticated Supabase client
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return json({ error: "Missing Authorization header" }, 401);
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: authHeader },
+        },
+      }
+    );
+
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return json({ error: "Unauthorized" }, 401);
+    }
 
     const { payload_id, country, bucket } = await req.json().catch(() => ({}));
     if (!payload_id) return json({ error: "payload_id required" }, 400);
+
+    // Use service client for privileged operations
+    const serviceSupabase = createServiceClient(req);
 
     // Set request country as a session-local GUC (read by SQL function)
     // This is a convention; implement using Postgres 'set_config' via RPC if needed.
@@ -24,7 +47,7 @@ serve(async (req) => {
     // Here we just forward it for auditing; actual GUC setting handled in SQL/RPC if implemented.
 
     // Ask DB if user is authorized and get the storage pointer
-    const { data, error } = await supabase.rpc("authorize_payload_download", { 
+    const { data, error } = await serviceSupabase.rpc("authorize_payload_download", { 
       p_payload_id: payload_id 
     });
     
@@ -37,15 +60,15 @@ serve(async (req) => {
     const objectPath = uri.substring(storageBucket.length + 1);
 
     // Generate a signed URL (short TTL)
-    const { data: urlData, error: urlErr } = await supabase.storage
+    const { data: urlData, error: urlErr } = await serviceSupabase.storage
       .from(storageBucket)
       .createSignedUrl(objectPath, 60); // 60s
 
     if (urlErr) return json({ error: urlErr.message }, 400);
 
-    // Audit
-    await supabase.from("access_log").insert({
-      actor_user_id: null, // service — optionally resolve from JWT if you proxy end-user token
+    // Audit with actual user
+    await serviceSupabase.from("access_log").insert({
+      actor_user_id: user.id,
       resource: `payload:${payload_id}`,
       decision: "allow",
       reason: `signed:${objectPath}`,
