@@ -1,1 +1,4 @@
-project_id = "bsjhfvctmduxhohtllly"
+project_id = "iqjjctrgwafkbpdotflw"
+
+[functions.registry_webhook]
+verify_jwt = false

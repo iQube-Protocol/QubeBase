@@ -1,6 +1,7 @@
 // /supabase/functions/upload_intake/index.ts
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://deno.land/x/zod@v3.23.8/mod.ts";
 
 const SOFT = Number(Deno.env.get("APP_FILE_SOFT_CAP_BYTES") ?? 524288000);   // 500 MB
 const HARD = Number(Deno.env.get("APP_FILE_HARD_CAP_BYTES") ?? 1073741824);  // 1 GB
@@ -18,43 +19,80 @@ serve(async (req) => {
   try {
     const supabase = createServiceClient(req);
 
-    const body = await req.json().catch(() => ({}));
-    const {
-      name,
-      description,
-      tenant_id,
-      size_bytes,
-      mime,
-      storage_uri,
-      envelope,  // For future envelope encryption support
-    } = body;
-
-    if (!tenant_id || !storage_uri || !size_bytes) {
-      return json({ error: "Missing required fields" }, 400);
+    // Read body as text to perform safe JSON parsing
+    const raw = await req.text();
+    let parsed: any;
+    try {
+      parsed = raw ? JSON.parse(raw) : {};
+    } catch {
+      return json({ error: 'Invalid JSON body' }, 400);
     }
-    if (size_bytes > HARD) return json({ error: `File too large (>${HARD} bytes)` }, 413);
 
-    // Basic MIME allowlist (adjust as needed)
+    // Validation schema
+    const uploadSchema = z.object({
+      name: z.string().trim().min(1).max(255).optional(),
+      description: z.string().trim().max(2000).optional(),
+      tenant_id: z.string().uuid(),
+      size_bytes: z.number().int().positive().max(HARD),
+      mime: z.string().regex(/^[a-z]+\/[a-z0-9+.-]+$/i, 'invalid mime type'),
+      storage_uri: z.string().trim().regex(/^[a-z0-9._-]+\/[A-Za-z0-9/_\-.]+$/),
+      envelope: z
+        .object({ key_ref: z.string().min(1), wrapped_dek: z.string().min(1) })
+        .optional(),
+    });
+
+    const result = uploadSchema.safeParse(parsed);
+    if (!result.success) {
+      return json({ error: 'Validation failed', issues: result.error.flatten() }, 422);
+    }
+
+    const { name, description, tenant_id, size_bytes, mime, storage_uri } = result.data;
+
+    // Additional path traversal guard
+    if (storage_uri.includes('..')) return json({ error: 'Invalid storage path' }, 400);
+
+    // Get authenticated user from Bearer token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) return json({ error: 'Missing authorization' }, 401);
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+
+    // Verify the user belongs to the tenant (has any role in tenant)
+    const { data: ur, error: urErr } = await supabase
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', user.id);
+    if (urErr) return json({ error: urErr.message }, 400);
+
+    const roleIds = (ur ?? []).map((r: any) => r.role_id);
+    if (roleIds.length === 0) return json({ error: 'Forbidden: no roles' }, 403);
+
+    const { data: role, error: rErr } = await supabase
+      .from('roles')
+      .select('id')
+      .in('id', roleIds)
+      .eq('tenant_id', tenant_id)
+      .maybeSingle();
+    if (rErr) return json({ error: rErr.message }, 400);
+    if (!role) return json({ error: 'Forbidden: not a member of tenant' }, 403);
+
+    // Enforce hard cap here as well (defense in depth) - size already validated via schema
+    if (size_bytes > HARD) return json({ error: `File too large (> ${HARD} bytes)` }, 413);
+
+    // Basic MIME allowlist (defense in depth)
     const allow = ["image/", "video/", "audio/", "application/pdf", "text/"];
     if (!allow.some((p) => mime?.startsWith(p))) {
       return json({ error: "MIME type not allowed" }, 415);
     }
 
-    // Get authenticated user
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return json({ error: "Missing authorization" }, 401);
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
-    if (authError || !user) return json({ error: "Unauthorized" }, 401);
-
     // Insert payload row
     const { data: payload, error } = await supabase
-      .from("payloads")
+      .from('payloads')
       .insert({
         tenant_id,
-        name: name ?? "Untitled",
+        name: name ?? 'Untitled',
         description,
         file_size_bytes: size_bytes,
         content_type: mime,
@@ -66,11 +104,8 @@ serve(async (req) => {
 
     if (error) return json({ error: error.message }, 400);
 
-    // TODO: Envelope encryption support will be added in Phase 2
-    // if (envelope?.key_ref && envelope?.wrapped_dek) { ... }
-
     // Soft-cap advisory
-    const note = size_bytes > SOFT ? "SOFT_CAP_EXCEEDED" : "OK";
+    const note = size_bytes > SOFT ? 'SOFT_CAP_EXCEEDED' : 'OK';
     return json({ ok: true, payload_id: payload.id, note }, 201);
   } catch (e) {
     console.error('Upload intake error:', e);
