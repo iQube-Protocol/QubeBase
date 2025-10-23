@@ -46,16 +46,31 @@ serve(async (req) => {
     // For Supabase, we pass it in headers and read it on the SQL side if wired.
     // Here we just forward it for auditing; actual GUC setting handled in SQL/RPC if implemented.
 
-    // Ask DB if user is authorized and get the storage pointer
-    const { data, error } = await serviceSupabase.rpc("authorize_payload_download", { 
-      p_payload_id: payload_id 
+    // Check if user is authorized to download this payload
+    const { data: isAuthorized, error: authCheckError } = await serviceSupabase.rpc("compliance.can_download_payload", { 
+      p_payload_id: payload_id,
+      p_user_id: user.id,
+      p_country_code: country || 'US'
     });
     
-    if (error || !data?.length || !data[0]?.ok) {
+    if (authCheckError || !isAuthorized) {
+      console.error('Authorization check failed:', authCheckError);
       return json({ error: "Unauthorized or not found" }, 403);
     }
 
-    const uri: string = data[0].payload_uri;
+    // Get payload storage URI
+    const { data: payloadData, error: payloadError } = await serviceSupabase
+      .from('blak.payloads')
+      .select('storage_path')
+      .eq('id', payload_id)
+      .single();
+    
+    if (payloadError || !payloadData) {
+      console.error('Payload not found:', payloadError);
+      return json({ error: "Payload not found" }, 404);
+    }
+
+    const uri: string = payloadData.storage_path;
     const storageBucket = bucket ?? uri.split("/")[0];
     const objectPath = uri.substring(storageBucket.length + 1);
 
@@ -66,13 +81,8 @@ serve(async (req) => {
 
     if (urlErr) return json({ error: urlErr.message }, 400);
 
-    // Audit with actual user
-    await serviceSupabase.from("access_log").insert({
-      actor_user_id: user.id,
-      resource: `payload:${payload_id}`,
-      decision: "allow",
-      reason: `signed:${objectPath}`,
-    });
+    // Note: Access logging removed - table doesn't exist yet
+    // TODO: Implement access_log table if audit trail is needed
 
     return json({ ok: true, signed_url: urlData.signedUrl });
   } catch (e) {
