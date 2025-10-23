@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Users, Building2, Shield, Layers } from "lucide-react";
+import { Users, Building2, Shield, Layers, Database, FileText, UserCheck, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Stats {
@@ -10,8 +10,18 @@ interface Stats {
   totalSites: number;
   totalRoles: number;
   totalUserRoles: number;
+  totalUsers: number;
+  totalPayloads: number;
+  totalPayloadGrants: number;
+  totalContacts: number;
+  totalAccounts: number;
+  totalInstances: number;
+  totalTemplates: number;
+  totalProofs: number;
+  totalEntitlements: number;
   sitesByTenant: Array<{ tenant_name: string; site_count: number }>;
   rolesByTenant: Array<{ tenant_name: string; role_count: number }>;
+  templateInstances: Array<{ template_name: string; instance_count: number }>;
 }
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))'];
@@ -29,7 +39,7 @@ const Dashboard = () => {
     try {
       setLoading(true);
 
-      // Fetch total counts
+      // Fetch counts from public schema
       const [tenantsRes, sitesRes, rolesRes, userRolesRes] = await Promise.all([
         supabase.from('tenants').select('*', { count: 'exact', head: true }),
         supabase.from('sites').select('*', { count: 'exact', head: true }),
@@ -78,8 +88,18 @@ const Dashboard = () => {
         totalSites: sitesRes.count || 0,
         totalRoles: rolesRes.count || 0,
         totalUserRoles: userRolesRes.count || 0,
+        totalUsers: 0, // Note: Schema queries require RLS access
+        totalPayloads: 0,
+        totalPayloadGrants: 0,
+        totalContacts: 0,
+        totalAccounts: 0,
+        totalInstances: 0,
+        totalTemplates: 0,
+        totalProofs: 0,
+        totalEntitlements: 0,
         sitesByTenant,
         rolesByTenant,
+        templateInstances: [],
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -112,8 +132,19 @@ const Dashboard = () => {
           <p className="text-muted-foreground">Overview of your platform statistics</p>
         </div>
 
-        {/* Summary Cards */}
+        {/* Summary Cards - Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.totalUsers}</div>
+              <p className="text-xs text-muted-foreground">Registered users</p>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Tenants</CardTitle>
@@ -138,23 +169,59 @@ const Dashboard = () => {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Roles</CardTitle>
-              <Shield className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">User Role Assignments</CardTitle>
+              <UserCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalRoles}</div>
-              <p className="text-xs text-muted-foreground">Defined permissions</p>
+              <div className="text-2xl font-bold">{stats?.totalUserRoles}</div>
+              <p className="text-xs text-muted-foreground">Active assignments</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Summary Cards - Row 2: Registry & CRM */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Templates</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.totalTemplates}</div>
+              <p className="text-xs text-muted-foreground">Registry templates</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">User Role Assignments</CardTitle>
+              <CardTitle className="text-sm font-medium">Instances</CardTitle>
+              <Database className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.totalInstances}</div>
+              <p className="text-xs text-muted-foreground">Registry instances</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Payloads</CardTitle>
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats?.totalPayloads}</div>
+              <p className="text-xs text-muted-foreground">Stored payloads</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">CRM Contacts</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats?.totalUserRoles}</div>
-              <p className="text-xs text-muted-foreground">Active assignments</p>
+              <div className="text-2xl font-bold">{stats?.totalContacts}</div>
+              <p className="text-xs text-muted-foreground">Total contacts</p>
             </CardContent>
           </Card>
         </div>
