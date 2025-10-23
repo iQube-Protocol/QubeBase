@@ -55,7 +55,7 @@ serve(async (req) => {
     
     if (authCheckError || !isAuthorized) {
       console.error('Authorization check failed:', authCheckError);
-      return json({ error: "Unauthorized or not found" }, 403);
+      return json({ error: "Access denied" }, 403);
     }
 
     // Get payload storage URI
@@ -79,7 +79,10 @@ serve(async (req) => {
       .from(storageBucket)
       .createSignedUrl(objectPath, 60); // 60s
 
-    if (urlErr) return json({ error: urlErr.message }, 400);
+    if (urlErr) {
+      console.error('Signed URL generation error:', urlErr);
+      return json({ error: 'Failed to generate download URL' }, 400);
+    }
 
     // Note: Access logging removed - table doesn't exist yet
     // TODO: Implement access_log table if audit trail is needed
@@ -87,7 +90,7 @@ serve(async (req) => {
     return json({ ok: true, signed_url: urlData.signedUrl });
   } catch (e) {
     console.error('Issue signed URL error:', e);
-    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    return json({ error: 'Internal server error' }, 500);
   }
 });
 

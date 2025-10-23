@@ -95,7 +95,10 @@ serve(async (req) => {
       .eq('tenant_id', tenant_id)
       .gte('created_at', oneHourAgo);
 
-    if (countErr) return json({ error: countErr.message }, 500);
+    if (countErr) {
+      console.error('Rate limit check error:', countErr);
+      return json({ error: 'Service unavailable' }, 500);
+    }
     if (count && count > 100) {
       return json({ error: 'Rate limit exceeded. Maximum 100 uploads per hour per tenant.' }, 429);
     }
@@ -105,7 +108,10 @@ serve(async (req) => {
       .from('user_roles')
       .select('role_id')
       .eq('user_id', user.id);
-    if (urErr) return json({ error: urErr.message }, 400);
+    if (urErr) {
+      console.error('User roles lookup error:', urErr);
+      return json({ error: 'Authorization check failed' }, 400);
+    }
 
     const roleIds = (ur ?? []).map((r: any) => r.role_id);
     if (roleIds.length === 0) return json({ error: 'Forbidden: no roles' }, 403);
@@ -116,7 +122,10 @@ serve(async (req) => {
       .in('id', roleIds)
       .eq('tenant_id', tenant_id)
       .maybeSingle();
-    if (rErr) return json({ error: rErr.message }, 400);
+    if (rErr) {
+      console.error('Role lookup error:', rErr);
+      return json({ error: 'Authorization check failed' }, 400);
+    }
     if (!role) return json({ error: 'Forbidden: not a member of tenant' }, 403);
 
     // Enforce hard cap here as well (defense in depth) - size already validated via schema
@@ -143,14 +152,17 @@ serve(async (req) => {
       .select()
       .single();
 
-    if (error) return json({ error: error.message }, 400);
+    if (error) {
+      console.error('Payload insert error:', error);
+      return json({ error: 'Failed to create upload record' }, 400);
+    }
 
     // Soft-cap advisory
     const note = size_bytes > SOFT ? 'SOFT_CAP_EXCEEDED' : 'OK';
     return json({ ok: true, payload_id: payload.id, note }, 201);
   } catch (e) {
     console.error('Upload intake error:', e);
-    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    return json({ error: 'Internal server error' }, 500);
   }
 });
 

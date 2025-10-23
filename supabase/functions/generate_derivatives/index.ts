@@ -49,7 +49,8 @@ serve(async (req) => {
       .single();
 
     if (payloadError || !payload) {
-      return json({ error: "Payload not found or unauthorized" }, 403);
+      console.error('Payload lookup error:', payloadError);
+      return json({ error: "Payload not found or access denied" }, 403);
     }
 
     // Check if user is a member of the tenant
@@ -61,7 +62,8 @@ serve(async (req) => {
       .single();
 
     if (membershipError || !membership) {
-      return json({ error: "Unauthorized - not a tenant member" }, 403);
+      console.error('Membership check error:', membershipError);
+      return json({ error: "Access denied" }, 403);
     }
 
     // TODO: fetch payload, perform policy check for server-side decrypt, generate previews.
@@ -75,12 +77,15 @@ serve(async (req) => {
       duration_s: null,
     });
     
-    if (error) return json({ error: error.message }, 400);
+    if (error) {
+      console.error('Derivative insert error:', error);
+      return json({ error: 'Failed to generate derivative' }, 400);
+    }
 
     return json({ ok: true });
   } catch (e) {
     console.error('Generate derivatives error:', e);
-    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    return json({ error: 'Internal server error' }, 500);
   }
 });
 
