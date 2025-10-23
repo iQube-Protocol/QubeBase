@@ -48,8 +48,36 @@ serve(async (req) => {
 
     const { name, description, tenant_id, size_bytes, mime, storage_uri } = result.data;
 
-    // Additional path traversal guard
-    if (storage_uri.includes('..')) return json({ error: 'Invalid storage path' }, 400);
+    // Enhanced path validation to prevent traversal
+    if (storage_uri.includes('..') || storage_uri.includes('//') || storage_uri.startsWith('/')) {
+      return json({ error: 'Invalid storage path' }, 400);
+    }
+
+    // Sanitize filename if provided
+    const sanitized_name = name ? name.replace(/[^a-zA-Z0-9._\- ]/g, '_').substring(0, 255) : 'Untitled';
+
+    // Validate MIME type matches file extension
+    const ext = storage_uri.split('.').pop()?.toLowerCase();
+    const allowedMimes: Record<string, string[]> = {
+      'jpg': ['image/jpeg'],
+      'jpeg': ['image/jpeg'],
+      'png': ['image/png'],
+      'gif': ['image/gif'],
+      'webp': ['image/webp'],
+      'pdf': ['application/pdf'],
+      'txt': ['text/plain'],
+      'json': ['application/json'],
+      'csv': ['text/csv'],
+      'mp4': ['video/mp4'],
+      'webm': ['video/webm'],
+      'mp3': ['audio/mpeg'],
+      'wav': ['audio/wav'],
+      'ogg': ['audio/ogg'],
+    };
+
+    if (ext && allowedMimes[ext] && !allowedMimes[ext].includes(mime)) {
+      return json({ error: 'MIME type mismatch with file extension' }, 400);
+    }
 
     // Get authenticated user from Bearer token
     const authHeader = req.headers.get('Authorization');
@@ -58,6 +86,19 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return json({ error: 'Unauthorized' }, 401);
+
+    // Rate limiting check (100 uploads per tenant per hour)
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+    const { count, error: countErr } = await supabase
+      .from('payloads')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant_id)
+      .gte('created_at', oneHourAgo);
+
+    if (countErr) return json({ error: countErr.message }, 500);
+    if (count && count > 100) {
+      return json({ error: 'Rate limit exceeded. Maximum 100 uploads per hour per tenant.' }, 429);
+    }
 
     // Verify the user belongs to the tenant (has any role in tenant)
     const { data: ur, error: urErr } = await supabase
@@ -87,12 +128,12 @@ serve(async (req) => {
       return json({ error: "MIME type not allowed" }, 415);
     }
 
-    // Insert payload row
+    // Insert payload row with sanitized name
     const { data: payload, error } = await supabase
       .from('payloads')
       .insert({
         tenant_id,
-        name: name ?? 'Untitled',
+        name: sanitized_name,
         description,
         file_size_bytes: size_bytes,
         content_type: mime,
