@@ -7,66 +7,75 @@ const corsHeaders = {
 };
 
 // Validation schemas for Nakamoto migration data
+
+const InvitationStatusSchema = z.object({
+  invited_at: z.string(),
+  invited_by: z.string().nullable().optional(),
+  batch_id: z.string().nullable().optional(),
+  email_sent: z.boolean(),
+  email_sent_at: z.string().nullable().optional(),
+  send_attempts: z.number(),
+  expires_at: z.string(),
+  signup_completed: z.boolean(),
+  completed_at: z.string().nullable().optional(),
+  invitation_token: z.string(),
+});
+
+const ConnectionDataSchema = z.object({
+  service: z.string(),
+  connected_at: z.string(),
+  connection_data: z.any().optional(),
+});
+
+const NamePreferencesSchema = z.object({
+  persona_type: z.string(),
+  name_source: z.string(),
+  invitation_first_name: z.string().nullable().optional(),
+  invitation_last_name: z.string().nullable().optional(),
+  linkedin_first_name: z.string().nullable().optional(),
+  linkedin_last_name: z.string().nullable().optional(),
+  custom_first_name: z.string().nullable().optional(),
+  custom_last_name: z.string().nullable().optional(),
+});
+
+const ProfileSchema = z.object({
+  first_name: z.string().nullable().optional(),
+  last_name: z.string().nullable().optional(),
+  avatar_url: z.string().nullable().optional(),
+  total_points: z.number(),
+  level: z.number(),
+});
+
 const UserMigrationRecordSchema = z.object({
-  source_user_id: z.string().uuid(),
+  source_user_id: z.string(),
   email: z.string().email(),
-  tenant_id: z.string().uuid().optional(),
+  tenant_id: z.string().uuid(),
   status: z.enum(['completed', 'invited', 'expired']),
   persona_type: z.enum(['knyt', 'qripto']),
-  invitation_status: z.object({
-    invited_at: z.string(),
-    invited_by: z.string().nullable(),
-    batch_id: z.string().nullable(),
-    email_sent: z.boolean(),
-    email_sent_at: z.string().nullable(),
-    send_attempts: z.number(),
-    expires_at: z.string(),
-    signup_completed: z.boolean(),
-    completed_at: z.string().nullable(),
-    invitation_token: z.string(),
-  }),
+  invitation_status: InvitationStatusSchema,
   persona_data: z.record(z.any()),
-  connection_data: z.array(z.object({
-    service: z.string(),
-    connected_at: z.string(),
-    connection_data: z.any(),
-  })).optional().default([]),
-  name_preferences: z.object({
-    persona_type: z.string(),
-    name_source: z.string(),
-    invitation_first_name: z.string().nullable(),
-    invitation_last_name: z.string().nullable(),
-    linkedin_first_name: z.string().nullable().optional(),
-    linkedin_last_name: z.string().nullable().optional(),
-    custom_first_name: z.string().nullable().optional(),
-    custom_last_name: z.string().nullable().optional(),
-  }).nullable(),
-  profile: z.object({
-    first_name: z.string().nullable(),
-    last_name: z.string().nullable(),
-    avatar_url: z.string().nullable(),
-    total_points: z.number(),
-    level: z.number(),
-  }).nullable(),
-  auth_user_id: z.string().uuid().nullable(),
-  auth_created_at: z.string().nullable(),
+  connection_data: z.array(ConnectionDataSchema).optional().default([]),
+  name_preferences: NamePreferencesSchema.nullable().optional(),
+  profile: ProfileSchema.nullable().optional(),
+  auth_user_id: z.string().uuid().nullable().optional(),
+  auth_created_at: z.string().nullable().optional(),
   meta: z.record(z.any()).optional().default({}),
 });
 
 const InteractionHistorySchema = z.object({
-  source_user_id: z.string().uuid(),
+  source_user_id: z.string(),
   query: z.string(),
   response: z.string(),
   interaction_type: z.string(),
   metadata: z.any().optional(),
-  summarized: z.boolean().optional().default(false),
+  summarized: z.boolean(),
   created_at: z.string(),
   persona_type: z.enum(['knyt', 'qripto']).optional(),
 });
 
 const KBDocumentSchema = z.object({
   title: z.string(),
-  content_text: z.string().optional(),
+  content_text: z.string().optional().default(''),
   source_uri: z.string().optional(),
   lang: z.string().optional().default('en'),
   tags: z.array(z.string()).optional().default([]),
@@ -82,22 +91,18 @@ const SystemPromptSchema = z.object({
 const ImportDataSchema = z.object({
   users: z.array(UserMigrationRecordSchema).optional().default([]),
   interactions: z.array(InteractionHistorySchema).optional().default([]),
-  kb_documents: z.array(KBDocumentSchema).optional().default([]),
-  system_prompt: SystemPromptSchema.optional(),
+  knowledge_base: z.array(KBDocumentSchema).optional().default([]),
+  prompts: z.array(SystemPromptSchema).optional().default([]),
 });
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     console.log('=== Nakamoto Import Started ===');
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -109,132 +114,168 @@ Deno.serve(async (req) => {
     );
 
     // Verify authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    console.log('Checking authentication...');
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
     if (authError || !user) {
+      console.error('Auth failed:', authError);
       return new Response(
         JSON.stringify({ error: 'Authentication required' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    console.log('User authenticated:', user.id);
 
-    // Parse body
-    const body = await req.json();
-    const providedTenantId = body?.tenant_id as string | undefined;
-    const requestData = body?.data;
+    // Parse request body
+    console.log('Parsing request body...');
+    const body = await req.json().catch((e) => {
+      console.error('JSON parse error:', e);
+      return {} as any;
+    });
+    
+    const providedTenantId = (body as any)?.tenant_id as string | undefined;
+    const requestData = (body as any)?.data;
+    console.log('Provided tenant ID:', providedTenantId || 'auto-detect');
 
     // Resolve tenant ID
-    let tenantId: string;
+    let tenantId: string | null = null;
+
     if (providedTenantId) {
+      // Verify admin status
+      console.log('Checking admin status for tenant:', providedTenantId);
       const { data: isAdmin, error: adminCheckError } = await supabase
         .rpc('is_tenant_admin', { _user_id: user.id, _tenant_id: providedTenantId });
-      
-      if (adminCheckError || !isAdmin) {
+
+      if (adminCheckError) {
+        console.error('is_tenant_admin RPC error:', adminCheckError);
         return new Response(
-          JSON.stringify({ error: 'Not authorized for this tenant' }),
+          JSON.stringify({ error: 'Authorization check failed', details: adminCheckError.message }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      if (!isAdmin) {
+        console.warn('User is not admin of tenant:', providedTenantId);
+        return new Response(
+          JSON.stringify({ error: 'You are not an admin of the selected tenant' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       tenantId = providedTenantId;
+      console.log('Admin verified, using tenant:', tenantId);
     } else {
+      // Auto-detect tenant
+      console.log('Auto-detecting tenant for user...');
       const { data: detectedTenantId, error: tenantError } = await supabase
         .rpc('get_user_tenant', { _user_id: user.id });
-      
+
       if (tenantError || !detectedTenantId) {
+        console.error('Tenant auto-detection failed:', tenantError);
         return new Response(
-          JSON.stringify({ error: 'Unable to resolve tenant. Please specify tenant_id.' }),
+          JSON.stringify({ 
+            error: 'Unable to resolve tenant automatically. Please specify tenant_id in the form.', 
+            details: tenantError?.message 
+          }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
       tenantId = detectedTenantId;
+      console.log('Auto-detected tenant:', tenantId);
     }
 
-    // Validate data
+    if (!tenantId) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid tenant configuration' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse and validate request data
     const validatedData = ImportDataSchema.parse(requestData);
+
+    console.log('Import request:', {
+      user: user.id,
+      tenant: tenantId,
+      counts: {
+        users: validatedData.users.length,
+        interactions: validatedData.interactions.length,
+        knowledge_base: validatedData.knowledge_base.length,
+        prompts: validatedData.prompts.length,
+      },
+    });
 
     const stats = {
       users: 0,
       interactions: 0,
-      kb_documents: 0,
-      system_prompt: false,
+      knowledge_base: 0,
+      prompts: 0,
     };
 
-    // Create or get Root corpus for KB documents
-    let rootCorpusId: string | null = null;
-    if (validatedData.kb_documents.length > 0) {
-      const { data: existingCorpus } = await supabaseAdmin
-        .from('corpora')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('app', 'nakamoto')
-        .eq('name', 'Root')
-        .eq('scope', 'root')
-        .single();
-
-      if (existingCorpus) {
-        rootCorpusId = existingCorpus.id;
-      } else {
-        const { data: newCorpus, error: corpusError } = await supabaseAdmin
-          .from('corpora')
-          .insert({
-            tenant_id: tenantId,
-            app: 'nakamoto',
-            name: 'Root',
-            scope: 'root',
-            description: 'Root knowledge base for Nakamoto platform',
-          })
-          .select('id')
-          .single();
-
-        if (corpusError) throw new Error(`Failed to create corpus: ${corpusError.message}`);
-        rootCorpusId = newCorpus.id;
-      }
-    }
+    // Track user ID mappings
+    const userIdMap = new Map<string, string>();
 
     // Import users
-    const userIdMap = new Map<string, string>();
-    for (const user of validatedData.users) {
+    for (const userRecord of validatedData.users) {
       try {
-        // Store migration record
-        const { data: migrationRecord, error: migrationError } = await supabaseAdmin
-          .from('user_migration_map')
+        // Build migration metadata
+        const migrationMetadata = {
+          status: userRecord.status,
+          persona_type: userRecord.persona_type,
+          invitation_status: userRecord.invitation_status,
+          persona_data: userRecord.persona_data,
+          connection_data: userRecord.connection_data,
+          name_preferences: userRecord.name_preferences,
+          profile: userRecord.profile,
+          auth_user_id: userRecord.auth_user_id,
+          auth_created_at: userRecord.auth_created_at,
+          meta: userRecord.meta,
+        };
+
+        // Insert into user_migration_map
+        const { data: inserted, error } = await supabase
+          .from('app_nakamoto.user_migration_map')
           .insert({
-            source_user_id: user.source_user_id,
-            new_user_id: user.auth_user_id || user.source_user_id,
-            email: user.email,
-            tenant_id: user.tenant_id || tenantId,
-            migration_metadata: {
-              status: user.status,
-              persona_type: user.persona_type,
-              persona_data: user.persona_data,
-              invitation_status: user.invitation_status,
-              connection_data: user.connection_data,
-              name_preferences: user.name_preferences,
-              profile: user.profile,
-              meta: user.meta,
-            },
+            source_user_id: userRecord.source_user_id,
+            new_user_id: userRecord.auth_user_id || userRecord.source_user_id,
+            email: userRecord.email,
+            tenant_id: userRecord.tenant_id,
+            migration_metadata: migrationMetadata,
           })
           .select('source_user_id, new_user_id')
           .single();
 
-        if (migrationError) {
-          console.error(`Failed to import user ${user.email}:`, migrationError);
-          continue;
+        if (error) {
+          console.error('User migration insert error:', error);
+          // Skip on duplicate
+          if (!error.message?.includes('duplicate')) {
+            throw new Error(`Failed to insert user migration: ${userRecord.email}`);
+          }
+        } else if (inserted) {
+          userIdMap.set(inserted.source_user_id, inserted.new_user_id);
+          stats.users++;
+          console.log('Imported user:', userRecord.email);
         }
-
-        userIdMap.set(migrationRecord.source_user_id, migrationRecord.new_user_id);
-        stats.users++;
       } catch (err) {
-        console.error(`Error importing user ${user.email}:`, err);
+        console.error('Error importing user:', userRecord.email, err);
       }
     }
 
-    // Import interactions
+    // Import interaction histories
     for (const interaction of validatedData.interactions) {
       try {
-        const newUserId = userIdMap.get(interaction.source_user_id) || interaction.source_user_id;
-        
-        await supabaseAdmin
-          .from('interaction_history')
+        const newUserId = userIdMap.get(interaction.source_user_id);
+        if (!newUserId) {
+          console.warn(`User ID not found for interaction: ${interaction.source_user_id}`);
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('app_nakamoto.interaction_history')
           .insert({
             app: 'nakamoto',
             tenant_id: tenantId,
@@ -248,74 +289,119 @@ Deno.serve(async (req) => {
             occurred_at: interaction.created_at,
           });
 
-        stats.interactions++;
+        if (error) {
+          console.error('Interaction insert error:', error);
+        } else {
+          stats.interactions++;
+        }
       } catch (err) {
         console.error('Error importing interaction:', err);
       }
     }
 
-    // Import KB documents
-    if (rootCorpusId) {
-      for (const doc of validatedData.kb_documents) {
-        try {
-          // Upsert by title (deduplicate)
-          const { error: docError } = await supabaseAdmin
-            .from('docs')
-            .upsert({
-              corpus_id: rootCorpusId,
-              tenant_id: tenantId,
-              title: doc.title,
-              content_text: doc.content_text || '',
-              tags: doc.tags,
-              metadata: {
-                ...doc.metadata,
-                source_uri: doc.source_uri,
-                lang: doc.lang,
-              },
-            }, {
-              onConflict: 'corpus_id,title',
-            });
+    // Import knowledge base documents
+    if (validatedData.knowledge_base.length > 0) {
+      // Get or create root corpus for nakamoto
+      let corpusId: string | null = null;
+      
+      const { data: existingCorpus, error: corpusSelectError } = await supabase
+        .from('kb.corpora')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('app', 'nakamoto')
+        .eq('scope', 'root')
+        .eq('name', 'Root')
+        .single();
 
-          if (docError) {
-            console.error(`Failed to import doc ${doc.title}:`, docError);
-            continue;
+      if (existingCorpus) {
+        corpusId = existingCorpus.id;
+        console.log('Using existing corpus:', corpusId);
+      } else {
+        const { data: newCorpus, error: corpusInsertError } = await supabase
+          .from('kb.corpora')
+          .insert({
+            tenant_id: tenantId,
+            app: 'nakamoto',
+            name: 'Root',
+            scope: 'root',
+            description: 'Nakamoto knowledge base root corpus',
+          })
+          .select('id')
+          .single();
+
+        if (corpusInsertError) {
+          console.error('Corpus insert error:', corpusInsertError);
+        } else if (newCorpus) {
+          corpusId = newCorpus.id;
+          console.log('Created new corpus:', corpusId);
+        }
+      }
+
+      if (corpusId) {
+        for (const doc of validatedData.knowledge_base) {
+          try {
+            const { error } = await supabase
+              .from('kb.docs')
+              .upsert({
+                corpus_id: corpusId,
+                tenant_id: tenantId,
+                title: doc.title,
+                content_text: doc.content_text,
+                content_type: 'text/markdown',
+                tags: doc.tags,
+                metadata: {
+                  ...doc.metadata,
+                  source_uri: doc.source_uri,
+                  lang: doc.lang,
+                },
+              }, {
+                onConflict: 'corpus_id,title',
+              });
+
+            if (error) {
+              console.error('KB doc insert error:', error);
+            } else {
+              stats.knowledge_base++;
+            }
+          } catch (err) {
+            console.error('Error importing KB doc:', doc.title, err);
           }
-
-          stats.kb_documents++;
-        } catch (err) {
-          console.error(`Error importing doc ${doc.title}:`, err);
         }
       }
     }
 
-    // Import system prompt
-    if (validatedData.system_prompt) {
+    // Import prompts
+    for (const prompt of validatedData.prompts) {
       try {
-        await supabaseAdmin
-          .from('prompts')
+        const { error } = await supabase
+          .from('prompts.prompts')
           .upsert({
             app: 'nakamoto',
-            tenant_id: null,
+            tenant_id: null, // Root prompt
             scope: 'root',
-            prompt_key: validatedData.system_prompt.prompt_key,
-            prompt_text: validatedData.system_prompt.prompt_text,
-            metadata: validatedData.system_prompt.metadata,
+            prompt_key: prompt.prompt_key,
+            prompt_text: prompt.prompt_text,
+            status: 'active',
+            metadata: prompt.metadata,
           }, {
             onConflict: 'app,tenant_id,prompt_key,scope',
           });
 
-        stats.system_prompt = true;
+        if (error) {
+          console.error('Prompt insert error:', error);
+        } else {
+          stats.prompts++;
+        }
       } catch (err) {
-        console.error('Error importing system prompt:', err);
+        console.error('Error importing prompt:', prompt.prompt_key, err);
       }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Nakamoto import completed',
+        message: 'Nakamoto import completed successfully',
         stats,
-        tenant_id: tenantId,
       }),
       {
         status: 200,
@@ -339,7 +425,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: errorMessage,
-        details: error instanceof z.ZodError ? error.errors : error.message,
+        details: error instanceof z.ZodError ? error.errors : undefined,
       }),
       {
         status: statusCode,
