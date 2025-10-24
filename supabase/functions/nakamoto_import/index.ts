@@ -113,40 +113,23 @@ Deno.serve(async (req) => {
       tenantId = providedTenantId;
       console.log('Admin verified, using tenant:', tenantId);
     } else {
-      // Fallback: try to discover a tenant without joining roles to avoid policy recursion
+      // Auto-detect tenant using secure RPC function
       console.log('Auto-detecting tenant for user...');
-      const { data: ur, error: urError } = await supabase
-        .from('user_roles')
-        .select('role_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .maybeSingle();
+      const { data: detectedTenantId, error: tenantError } = await supabase
+        .rpc('get_user_tenant', { _user_id: user.id });
 
-      if (urError || !ur) {
-        console.error('User roles query failed:', urError);
+      if (tenantError || !detectedTenantId) {
+        console.error('Tenant auto-detection failed:', tenantError);
         return new Response(
-          JSON.stringify({ error: 'User tenant not found. Provide tenant_id in request body.', details: urError?.message }),
+          JSON.stringify({ 
+            error: 'Unable to resolve tenant automatically. Please specify tenant_id in the form.', 
+            details: tenantError?.message 
+          }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.log('Found user role, fetching tenant...');
-      const { data: roleRow, error: roleErr } = await supabase
-        .from('roles')
-        .select('tenant_id')
-        .eq('id', (ur as any).role_id)
-        .limit(1)
-        .maybeSingle();
-
-      if (roleErr || !roleRow?.tenant_id) {
-        console.error('Roles query failed:', roleErr);
-        return new Response(
-          JSON.stringify({ error: 'Unable to resolve tenant automatically. Please specify tenant_id.', details: roleErr?.message }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      tenantId = (roleRow as any).tenant_id as string;
+      tenantId = detectedTenantId;
       console.log('Auto-detected tenant:', tenantId);
     }
 

@@ -124,6 +124,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_user_tenant: { Args: { _user_id: string }; Returns: string }
       is_tenant_admin: {
         Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
