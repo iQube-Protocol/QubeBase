@@ -4,12 +4,15 @@ import { Upload, FileJson, AlertCircle, CheckCircle2, Loader2 } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export default function NakamotoImport() {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [tenantId, setTenantId] = useState('');
   const [result, setResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -41,7 +44,7 @@ export default function NakamotoImport() {
       const jsonData = JSON.parse(fileContent);
 
       const { data, error } = await supabase.functions.invoke('nakamoto_import', {
-        body: { data: jsonData },
+        body: { data: jsonData, tenant_id: tenantId.trim() || undefined },
       });
 
       if (error) throw error;
@@ -57,7 +60,10 @@ export default function NakamotoImport() {
         description: `Successfully imported registry mirror data`,
       });
     } catch (error: any) {
-      const errorMessage = error.message || 'Failed to import data';
+      const isFetchErr = error?.name === 'FunctionsFetchError';
+      const errorMessage = isFetchErr
+        ? 'Unable to reach import function. Try again, and consider specifying a Tenant ID if the problem persists.'
+        : (error?.message || 'Failed to import data');
       setResult({
         success: false,
         message: errorMessage,
@@ -133,6 +139,16 @@ export default function NakamotoImport() {
                   </pre>
                 </AlertDescription>
               </Alert>
+
+              <div className="space-y-2">
+                <Label htmlFor="tenant-id">Tenant ID (optional)</Label>
+                <Input
+                  id="tenant-id"
+                  placeholder="e.g., 3f8a... (leave empty to auto-detect)"
+                  value={tenantId}
+                  onChange={(e) => setTenantId(e.target.value)}
+                />
+              </div>
 
               <div className="border-2 border-dashed rounded-lg p-8 text-center">
                 <input

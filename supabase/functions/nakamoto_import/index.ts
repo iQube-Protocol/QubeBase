@@ -71,22 +71,68 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user's tenant
-    const { data: userRoles, error: rolesError } = await supabase
-      .from('user_roles')
-      .select('role_id, roles(tenant_id)')
-      .eq('user_id', user.id)
-      .limit(1)
-      .single();
+    // Parse body early to allow optional tenant override
+    const body = await req.json().catch(() => ({} as any));
+    const providedTenantId = (body as any)?.tenant_id as string | undefined;
+    const requestData = (body as any)?.data;
 
-    if (rolesError || !userRoles) {
-      return new Response(
-        JSON.stringify({ error: 'User tenant not found' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Resolve tenant ID
+    let tenantId: string | null = null;
+
+    if (providedTenantId) {
+      // Verify the user is an admin of the provided tenant via RPC
+      const { data: isAdmin, error: adminCheckError } = await supabase
+        .rpc('is_tenant_admin', { _user_id: user.id, _tenant_id: providedTenantId });
+
+      if (adminCheckError) {
+        console.error('is_tenant_admin RPC error:', adminCheckError);
+        return new Response(
+          JSON.stringify({ error: 'Authorization check failed' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!isAdmin) {
+        return new Response(
+          JSON.stringify({ error: 'You are not an admin of the selected tenant' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      tenantId = providedTenantId;
+    } else {
+      // Fallback: try to discover a tenant without joining roles to avoid policy recursion
+      const { data: ur, error: urError } = await supabase
+        .from('user_roles')
+        .select('role_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (urError || !ur) {
+        return new Response(
+          JSON.stringify({ error: 'User tenant not found. Provide tenant_id in request body.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data: roleRow, error: roleErr } = await supabase
+        .from('roles')
+        .select('tenant_id')
+        .eq('id', (ur as any).role_id)
+        .limit(1)
+        .maybeSingle();
+
+      if (roleErr || !roleRow?.tenant_id) {
+        return new Response(
+          JSON.stringify({ error: 'Unable to resolve tenant automatically. Please specify tenant_id.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      tenantId = (roleRow as any).tenant_id as string;
     }
 
-    const tenantId = (userRoles.roles as any)?.tenant_id;
     if (!tenantId) {
       return new Response(
         JSON.stringify({ error: 'Invalid tenant configuration' }),
@@ -95,7 +141,6 @@ Deno.serve(async (req) => {
     }
 
     // Parse and validate request body
-    const { data: requestData } = await req.json();
     const validatedData = ImportDataSchema.parse(requestData);
 
     console.log('Import request:', {
