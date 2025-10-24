@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Users, Building2, Shield, Layers, Database, FileText, UserCheck, Package } from "lucide-react";
+import { Users, Building2, Shield, Layers, Database, FileText, UserCheck, Package, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Stats {
@@ -30,6 +32,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchStats();
@@ -127,9 +130,15 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold mb-2">QubeBase Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your platform statistics</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">QubeBase Dashboard</h1>
+            <p className="text-muted-foreground">Overview of your platform statistics</p>
+          </div>
+          <Button onClick={() => navigate('/nakamoto-import')} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Import Nakamoto Data
+          </Button>
         </div>
 
         {/* Summary Cards - Row 1 */}
