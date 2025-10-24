@@ -48,6 +48,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('=== Nakamoto Import Started ===');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -59,40 +60,50 @@ Deno.serve(async (req) => {
     );
 
     // Verify authentication
+    console.log('Checking authentication...');
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      console.error('Auth failed:', authError);
       return new Response(
         JSON.stringify({ error: 'Authentication required' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    console.log('User authenticated:', user.id);
 
     // Parse body early to allow optional tenant override
-    const body = await req.json().catch(() => ({} as any));
+    console.log('Parsing request body...');
+    const body = await req.json().catch((e) => {
+      console.error('JSON parse error:', e);
+      return {} as any;
+    });
     const providedTenantId = (body as any)?.tenant_id as string | undefined;
     const requestData = (body as any)?.data;
+    console.log('Provided tenant ID:', providedTenantId || 'auto-detect');
 
     // Resolve tenant ID
     let tenantId: string | null = null;
 
     if (providedTenantId) {
       // Verify the user is an admin of the provided tenant via RPC
+      console.log('Checking admin status for tenant:', providedTenantId);
       const { data: isAdmin, error: adminCheckError } = await supabase
         .rpc('is_tenant_admin', { _user_id: user.id, _tenant_id: providedTenantId });
 
       if (adminCheckError) {
         console.error('is_tenant_admin RPC error:', adminCheckError);
         return new Response(
-          JSON.stringify({ error: 'Authorization check failed' }),
+          JSON.stringify({ error: 'Authorization check failed', details: adminCheckError.message }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       if (!isAdmin) {
+        console.warn('User is not admin of tenant:', providedTenantId);
         return new Response(
           JSON.stringify({ error: 'You are not an admin of the selected tenant' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -100,8 +111,10 @@ Deno.serve(async (req) => {
       }
 
       tenantId = providedTenantId;
+      console.log('Admin verified, using tenant:', tenantId);
     } else {
       // Fallback: try to discover a tenant without joining roles to avoid policy recursion
+      console.log('Auto-detecting tenant for user...');
       const { data: ur, error: urError } = await supabase
         .from('user_roles')
         .select('role_id')
@@ -110,12 +123,14 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (urError || !ur) {
+        console.error('User roles query failed:', urError);
         return new Response(
-          JSON.stringify({ error: 'User tenant not found. Provide tenant_id in request body.' }),
+          JSON.stringify({ error: 'User tenant not found. Provide tenant_id in request body.', details: urError?.message }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
+      console.log('Found user role, fetching tenant...');
       const { data: roleRow, error: roleErr } = await supabase
         .from('roles')
         .select('tenant_id')
@@ -124,13 +139,15 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (roleErr || !roleRow?.tenant_id) {
+        console.error('Roles query failed:', roleErr);
         return new Response(
-          JSON.stringify({ error: 'Unable to resolve tenant automatically. Please specify tenant_id.' }),
+          JSON.stringify({ error: 'Unable to resolve tenant automatically. Please specify tenant_id.', details: roleErr?.message }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       tenantId = (roleRow as any).tenant_id as string;
+      console.log('Auto-detected tenant:', tenantId);
     }
 
     if (!tenantId) {
